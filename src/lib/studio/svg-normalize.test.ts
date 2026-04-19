@@ -11,6 +11,7 @@ describe("normalizeImportedSvg", () => {
     expect(asset.hasStroke).toBe(true);
     expect(asset.hasFill).toBe(false);
     expect(asset.sanitizedSvg).toContain('stroke="currentColor"');
+    expect(asset.sanitizedSvg).toContain("--studio-stroke-scale");
     expect(asset.sanitizedSvg).toContain('fill="none"');
   });
 

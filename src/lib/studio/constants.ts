@@ -1,24 +1,54 @@
-import type { NormalizedSvgAsset, StudioControls, WarningCode } from "@/lib/studio/types";
+import type {
+  NormalizedSvgAsset,
+  StudioControls,
+  TrailPatternCell,
+  WarningCode,
+} from "@/lib/studio/types";
 
 export const STORAGE_KEY = "studi03d-svg-studio";
-export const STORAGE_VERSION = 1;
+export const STORAGE_VERSION = 2;
+export const TRAIL_PATTERN_SIZE = 12;
 
-export const DEFAULT_CONTROLS: StudioControls = {
-  rotationDeg: -28,
-  skewXDeg: -26,
-  scaleY: 0.82,
-  fitScale: 1.12,
-  trailCount: 6,
-  trailOffsetX: 20,
-  trailOffsetY: -12,
-  opacityStart: 0.12,
-  opacityEnd: 0.38,
-  reverseTrail: false,
-  artColor: "#cfd7ff",
-  previewBgColor: "#141824",
-};
+export function createDefaultTrailPattern(): TrailPatternCell[] {
+  return Array.from({ length: TRAIL_PATTERN_SIZE }, (_, index) => ({
+    enabled: index < 2,
+    opacity: index === 0 ? 0.18 : 0.28,
+    matte: false,
+  }));
+}
+
+export function createDefaultControls(): StudioControls {
+  return {
+    rotationDeg: -12,
+    skewXDeg: -12,
+    scaleY: 1.06,
+    fitScale: 1.54,
+    strokeScale: 1,
+    trailCount: 2,
+    trailOffsetX: 18,
+    trailOffsetY: -11,
+    opacityStart: 0.18,
+    opacityEnd: 0.32,
+    reverseTrail: false,
+    useCustomTrailPattern: false,
+    trailPattern: createDefaultTrailPattern(),
+    artColor: "#cfd7ff",
+    previewBgColor: "#141824",
+  };
+}
+
+export const DEFAULT_CONTROLS = createDefaultControls();
 
 export const PROJECTION_PRESETS = [
+  {
+    label: "Reference",
+    values: {
+      rotationDeg: -12,
+      skewXDeg: -12,
+      scaleY: 1.06,
+      fitScale: 1.54,
+    },
+  },
   {
     label: "Left Iso",
     values: {
@@ -37,15 +67,6 @@ export const PROJECTION_PRESETS = [
       fitScale: 1.12,
     },
   },
-  {
-    label: "Front Tilt",
-    values: {
-      rotationDeg: -12,
-      skewXDeg: -14,
-      scaleY: 0.9,
-      fitScale: 1.06,
-    },
-  },
 ] as const;
 
 export const WARNING_COPY: Record<WarningCode, string> = {
@@ -59,7 +80,7 @@ export const WARNING_COPY: Record<WarningCode, string> = {
 
 export const PLACEHOLDER_ASSET: NormalizedSvgAsset = {
   sourceSvg: "",
-  sanitizedSvg: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 220"><rect x="22" y="18" width="116" height="184" rx="28" fill="none" stroke="currentColor" stroke-width="6"/><rect x="38" y="36" width="84" height="148" rx="18" fill="none" stroke="currentColor" stroke-opacity="0.48" stroke-width="4"/></svg>`,
+  sanitizedSvg: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 220"><rect x="22" y="18" width="116" height="184" rx="28" fill="none" stroke="currentColor" style="stroke-width: calc(var(--studio-stroke-scale, 1) * 6px)"/><rect x="38" y="36" width="84" height="148" rx="18" fill="none" stroke="currentColor" stroke-opacity="0.48" style="stroke-width: calc(var(--studio-stroke-scale, 1) * 4px)"/></svg>`,
   width: 160,
   height: 220,
   viewBox: "0 0 160 220",

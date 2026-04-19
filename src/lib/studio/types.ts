@@ -3,17 +3,26 @@ export type WarningCode =
   | "unsupported-paint"
   | "missing-viewbox";
 
+export interface TrailPatternCell {
+  enabled: boolean;
+  opacity: number;
+  matte: boolean;
+}
+
 export interface StudioControls {
   rotationDeg: number;
   skewXDeg: number;
   scaleY: number;
   fitScale: number;
+  strokeScale: number;
   trailCount: number;
   trailOffsetX: number;
   trailOffsetY: number;
   opacityStart: number;
   opacityEnd: number;
   reverseTrail: boolean;
+  useCustomTrailPattern: boolean;
+  trailPattern: TrailPatternCell[];
   artColor: string;
   previewBgColor: string;
 }
@@ -78,4 +87,5 @@ export interface TrailGhost {
   offsetX: number;
   offsetY: number;
   opacity: number;
+  matte: boolean;
 }

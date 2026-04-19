@@ -1,4 +1,4 @@
-import { DEFAULT_CONTROLS } from "@/lib/studio/constants";
+import { DEFAULT_CONTROLS, createDefaultControls } from "@/lib/studio/constants";
 import {
   applyMatrixToPoint,
   buildTrailGhosts,
@@ -35,9 +35,9 @@ describe("transform helpers", () => {
     });
 
     expect(ghosts).toEqual([
-      { step: 3, offsetX: 30, offsetY: -15, opacity: 0.1 },
-      { step: 2, offsetX: 20, offsetY: -10, opacity: 0.3 },
-      { step: 1, offsetX: 10, offsetY: -5, opacity: 0.5 },
+      { step: 3, offsetX: 30, offsetY: -15, opacity: 0.1, matte: false },
+      { step: 2, offsetX: 20, offsetY: -10, opacity: 0.3, matte: false },
+      { step: 1, offsetX: 10, offsetY: -5, opacity: 0.5, matte: false },
     ]);
   });
 
@@ -52,6 +52,23 @@ describe("transform helpers", () => {
 
     expect(ghosts[0]?.offsetX).toBe(-24);
     expect(ghosts[1]?.offsetY).toBe(-6);
+  });
+
+  it("builds custom trail rows with gaps and matte slots", () => {
+    const controls = createDefaultControls();
+    controls.useCustomTrailPattern = true;
+    controls.trailPattern = controls.trailPattern.map((cell, index) => ({
+      enabled: index === 0 || index === 3,
+      opacity: index === 0 ? 0.22 : 0.48,
+      matte: index === 3,
+    }));
+    controls.trailOffsetX = 8;
+    controls.trailOffsetY = -4;
+
+    expect(buildTrailGhosts(controls)).toEqual([
+      { step: 4, offsetX: 32, offsetY: -16, opacity: 0.48, matte: true },
+      { step: 1, offsetX: 8, offsetY: -4, opacity: 0.22, matte: false },
+    ]);
   });
 
   it("expands scene bounds when trail offsets are applied", () => {

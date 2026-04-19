@@ -16,6 +16,10 @@ interface SceneParts {
   bodyMarkup: string;
 }
 
+function matteStrokeScale(strokeScale: number) {
+  return Number((strokeScale + 1.15).toFixed(3));
+}
+
 function extractSceneParts(asset: NormalizedSvgAsset): SceneParts {
   const innerMarkup =
     asset.sanitizedSvg.match(/^<svg\b[^>]*>([\s\S]*)<\/svg>\s*$/i)?.[1] ?? asset.sanitizedSvg;
@@ -37,11 +41,19 @@ function buildSceneUses(asset: NormalizedSvgAsset, controls: StudioControls) {
   const ghostMarkup = buildTrailGhosts(controls)
     .map((ghost) => {
       const matrix = multiplyMatrices(translateMatrix(ghost.offsetX, ghost.offsetY), projectionMatrix);
+      const transform = matrixToSvgTransform(matrix);
+      const baseUse = `<use href="#asset-body" opacity="${ghost.opacity.toFixed(4)}" transform="${transform}" style="--studio-stroke-scale:${controls.strokeScale};" />`;
 
-      return `<use href="#asset-body" opacity="${ghost.opacity.toFixed(4)}" transform="${matrixToSvgTransform(matrix)}" />`;
+      if (!ghost.matte) {
+        return baseUse;
+      }
+
+      const matteUse = `<use href="#asset-body" opacity="${Math.min(1, ghost.opacity + 0.24).toFixed(4)}" transform="${transform}" style="--studio-stroke-scale:${matteStrokeScale(controls.strokeScale)};" />`;
+
+      return `${matteUse}${baseUse}`;
     })
     .join("");
-  const baseMarkup = `<use href="#asset-body" transform="${matrixToSvgTransform(projectionMatrix)}" />`;
+  const baseMarkup = `<use href="#asset-body" transform="${matrixToSvgTransform(projectionMatrix)}" style="--studio-stroke-scale:${controls.strokeScale};" />`;
 
   return `${ghostMarkup}${baseMarkup}`;
 }
@@ -54,7 +66,7 @@ function buildRootMarkup(
 ) {
   const { defsMarkup, bodyMarkup } = extractSceneParts(asset);
 
-  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${viewBox}" color="${controls.artColor}"><defs>${defsMarkup}<g id="asset-body">${bodyMarkup}</g></defs><g data-export-layer="true">${layerMarkup}</g></svg>`;
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${viewBox}" color="${controls.artColor}" style="--studio-stroke-scale:${controls.strokeScale};"><defs>${defsMarkup}<g id="asset-body">${bodyMarkup}</g></defs><g data-export-layer="true">${layerMarkup}</g></svg>`;
 }
 
 export function buildPreviewMarkup(asset: NormalizedSvgAsset, controls: StudioControls) {

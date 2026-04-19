@@ -10,12 +10,15 @@ describe("svg scene export", () => {
         skewXDeg: 0,
         scaleY: 1,
         fitScale: 1,
+        strokeScale: 1.4,
         trailCount: 0,
         trailOffsetX: 0,
         trailOffsetY: 0,
         opacityStart: 0.2,
         opacityEnd: 0.8,
         reverseTrail: false,
+        useCustomTrailPattern: false,
+        trailPattern: [],
         artColor: "#88ccff",
         previewBgColor: "#ff00ff",
       },
@@ -29,6 +32,7 @@ describe("svg scene export", () => {
 
     expect(markup).toContain('viewBox="6 8 168 206"');
     expect(markup).toContain('color="#88ccff"');
+    expect(markup).toContain("--studio-stroke-scale:1.4");
     expect(markup).not.toContain("#ff00ff");
   });
 });

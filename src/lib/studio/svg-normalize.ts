@@ -87,6 +87,19 @@ function parseDimension(value: string | null) {
   return match ? Number(match[0]) : null;
 }
 
+function normalizeStrokeWidthValue(value: string | null | undefined) {
+  if (!value) {
+    return "1px";
+  }
+
+  const trimmed = value.trim();
+  if (/^-?\d*\.?\d+$/.test(trimmed)) {
+    return `${trimmed}px`;
+  }
+
+  return trimmed;
+}
+
 function normalizePaintValue(rawValue: string | null | undefined, inheritedValue: string) {
   if (rawValue == null || rawValue === "") {
     return inheritedValue;
@@ -159,6 +172,9 @@ function walkAndNormalize(
     styleMap.stroke ?? element.getAttribute("stroke"),
     inheritedState.stroke,
   );
+  const strokeWidth = normalizeStrokeWidthValue(
+    styleMap["stroke-width"] ?? element.getAttribute("stroke-width"),
+  );
   const color = normalizePaintValue(styleMap.color ?? element.getAttribute("color"), inheritedState.color);
   const presentationState: PresentationState = {
     fill,
@@ -172,6 +188,7 @@ function walkAndNormalize(
   }
 
   stripPaintStyling(element, styleMap);
+  element.removeAttribute("stroke-width");
 
   if (GRAPHIC_ELEMENTS.has(tag)) {
     if (FILLABLE_ELEMENTS.has(tag)) {
@@ -191,6 +208,7 @@ function walkAndNormalize(
 
       if (effectiveStroke !== "none") {
         element.setAttribute("stroke", "currentColor");
+        styleMap["stroke-width"] = `calc(var(--studio-stroke-scale, 1) * ${strokeWidth})`;
         flags.hasStroke = true;
         colorTokens.add(effectiveStroke);
       }

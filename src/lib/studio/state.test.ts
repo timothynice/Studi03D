@@ -1,4 +1,4 @@
-import { DEFAULT_CONTROLS } from "@/lib/studio/constants";
+import { createDefaultControls } from "@/lib/studio/constants";
 import {
   createDraft,
   createInitialDraftState,
@@ -41,7 +41,7 @@ describe("draft state helpers", () => {
 
     const resetState = deleteDraft(withControls, activeId);
     expect(resetState.documents).toHaveLength(1);
-    expect(getActiveDocument(resetState).controls).toEqual(DEFAULT_CONTROLS);
+    expect(getActiveDocument(resetState).controls).toEqual(createDefaultControls());
   });
 
   it("repairs invalid persisted state", () => {
@@ -53,5 +53,6 @@ describe("draft state helpers", () => {
 
     expect(repaired.activeDocumentId).toBe(repaired.documents[0]!.id);
     expect(repaired.draftSequence).toBeGreaterThan(0);
+    expect(repaired.documents[0]?.controls.strokeScale).toBe(1);
   });
 });

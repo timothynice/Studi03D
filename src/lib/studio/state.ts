@@ -1,6 +1,15 @@
-import { DEFAULT_CONTROLS } from "@/lib/studio/constants";
+import {
+  createDefaultControls,
+  createDefaultTrailPattern,
+  TRAIL_PATTERN_SIZE,
+} from "@/lib/studio/constants";
 import { createStudioId } from "@/lib/studio/id";
-import type { NormalizedSvgAsset, StudioControls, StudioDocument } from "@/lib/studio/types";
+import type {
+  NormalizedSvgAsset,
+  StudioControls,
+  StudioDocument,
+  TrailPatternCell,
+} from "@/lib/studio/types";
 
 export interface DraftStateCore {
   documents: StudioDocument[];
@@ -16,6 +25,31 @@ function createDraftLabel(sequence: number) {
   return `Draft ${sequence}`;
 }
 
+function normalizeTrailPattern(pattern?: TrailPatternCell[]) {
+  const fallback = createDefaultTrailPattern();
+
+  return Array.from({ length: TRAIL_PATTERN_SIZE }, (_, index) => {
+    const existing = pattern?.[index];
+    const base = fallback[index];
+
+    return {
+      enabled: existing?.enabled ?? base.enabled,
+      opacity: typeof existing?.opacity === "number" ? existing.opacity : base.opacity,
+      matte: existing?.matte ?? base.matte,
+    };
+  });
+}
+
+export function normalizeControls(controls?: Partial<StudioControls> | null): StudioControls {
+  const defaults = createDefaultControls();
+
+  return {
+    ...defaults,
+    ...controls,
+    trailPattern: normalizeTrailPattern(controls?.trailPattern),
+  };
+}
+
 export function createDraftDocument(sequence: number, name = createDraftLabel(sequence)): StudioDocument {
   const timestamp = nowIsoString();
 
@@ -23,7 +57,7 @@ export function createDraftDocument(sequence: number, name = createDraftLabel(se
     id: createStudioId(),
     name,
     asset: null,
-    controls: { ...DEFAULT_CONTROLS },
+    controls: createDefaultControls(),
     createdAt: timestamp,
     updatedAt: timestamp,
   };
@@ -41,7 +75,12 @@ export function createInitialDraftState(): DraftStateCore {
 
 export function ensureDraftState(state?: Partial<DraftStateCore> | null): DraftStateCore {
   const fallback = createInitialDraftState();
-  const documents = state?.documents?.length ? state.documents : fallback.documents;
+  const documents = state?.documents?.length
+    ? state.documents.map((document) => ({
+        ...document,
+        controls: normalizeControls(document.controls),
+      }))
+    : fallback.documents;
   const activeDocumentId =
     state?.activeDocumentId && documents.some((document) => document.id === state.activeDocumentId)
       ? state.activeDocumentId
@@ -141,10 +180,10 @@ export function updateActiveControls(
 
   return updateDocumentById(state, activeDocument.id, (document) =>
     touchDocument(document, {
-      controls: {
+      controls: normalizeControls({
         ...document.controls,
         ...patch,
-      },
+      }),
     }),
   );
 }

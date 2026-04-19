@@ -153,13 +153,31 @@ export function createProjectionMatrix(viewBox: ViewBoxRect, controls: StudioCon
 }
 
 export function buildTrailGhosts(controls: StudioControls): TrailGhost[] {
+  const direction = controls.reverseTrail ? -1 : 1;
+
+  if (controls.useCustomTrailPattern) {
+    return controls.trailPattern
+      .map((cell, index) => ({
+        cell,
+        step: index + 1,
+      }))
+      .filter(({ cell }) => cell.enabled)
+      .sort((left, right) => right.step - left.step)
+      .map(({ cell, step }) => ({
+        step,
+        offsetX: controls.trailOffsetX * step * direction,
+        offsetY: controls.trailOffsetY * step * direction,
+        opacity: roundDecimal(clamp(cell.opacity, 0, 1)),
+        matte: cell.matte,
+      }));
+  }
+
   if (controls.trailCount <= 0) {
     return [];
   }
 
   return Array.from({ length: controls.trailCount }, (_, index) => {
     const step = controls.trailCount - index;
-    const direction = controls.reverseTrail ? -1 : 1;
     const amount =
       controls.trailCount === 1 ? 0 : (controls.trailCount - step) / (controls.trailCount - 1);
 
@@ -168,6 +186,7 @@ export function buildTrailGhosts(controls: StudioControls): TrailGhost[] {
       offsetX: controls.trailOffsetX * step * direction,
       offsetY: controls.trailOffsetY * step * direction,
       opacity: roundDecimal(clamp(lerp(controls.opacityStart, controls.opacityEnd, amount), 0, 1)),
+      matte: false,
     };
   });
 }
