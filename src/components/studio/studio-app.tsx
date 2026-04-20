@@ -15,7 +15,6 @@ import { buildPreviewMarkup } from "@/lib/studio/svg-scene";
 import { useActiveStudioDocument, useStudioStore } from "@/lib/studio/store";
 import type { StudioControls, TrailPatternCell } from "@/lib/studio/types";
 import { useStudioUiStore } from "@/lib/ui/store";
-import type { StudioUiSection } from "@/lib/ui/types";
 
 function toFieldId(label: string) {
   return label.toLowerCase().replace(/[^a-z0-9]+/g, "-");
@@ -93,12 +92,16 @@ function ToggleField({
         <strong>{label}</strong>
         <span>{description}</span>
       </span>
-      <input
-        aria-label={label}
-        checked={checked}
-        type="checkbox"
-        onChange={(event) => onChange(event.target.checked)}
-      />
+      <span className="studio-toggle-control">
+        <input
+          aria-label={label}
+          className="studio-toggle-input"
+          checked={checked}
+          type="checkbox"
+          onChange={(event) => onChange(event.target.checked)}
+        />
+        <span aria-hidden="true" className="studio-toggle-switch" />
+      </span>
     </label>
   );
 }
@@ -119,44 +122,51 @@ function WarningList({ warnings }: Readonly<{ warnings: string[] }>) {
   );
 }
 
-function DisclosureCard({
-  section,
+function RailWidget({
   title,
-  description,
-  summary,
-  activeSection,
-  onOpen,
+  actionLabel,
+  onAction,
   children,
 }: Readonly<{
-  section: StudioUiSection;
   title: string;
-  description: string;
-  summary: string;
-  activeSection: StudioUiSection;
-  onOpen: (section: StudioUiSection) => void;
+  actionLabel?: string;
+  onAction?: () => void;
   children: React.ReactNode;
 }>) {
-  const isOpen = activeSection === section;
-
   return (
-    <section className="studio-disclosure">
-      <div className="studio-disclosure-head">
-        <div>
-          <p className="eyebrow">{title}</p>
-          <p className="studio-card-copy">{description}</p>
-          {!isOpen ? <p className="studio-disclosure-summary">{summary}</p> : null}
-        </div>
-        <button
-          className="ui-button ui-button-ghost"
-          type="button"
-          disabled={isOpen}
-          onClick={() => onOpen(section)}
-        >
-          {isOpen ? "Selected" : "Open"}
-        </button>
+    <section className="studio-rail-widget">
+      <div className="studio-rail-widget-head">
+        <p className="studio-rail-title">{title}</p>
+        {actionLabel && onAction ? (
+          <button className="studio-rail-icon-button" type="button" onClick={onAction}>
+            {actionLabel}
+          </button>
+        ) : null}
       </div>
-      {isOpen ? <div className="studio-disclosure-body">{children}</div> : null}
+      <div className="studio-rail-widget-body">{children}</div>
     </section>
+  );
+}
+
+function ValueField({
+  label,
+  value,
+  unit,
+  emphasis = false,
+}: Readonly<{
+  label: string;
+  value: string;
+  unit?: string;
+  emphasis?: boolean;
+}>) {
+  return (
+    <div className={`studio-compact-field ${emphasis ? "is-emphasis" : ""}`}>
+      <span className="studio-compact-field-label">{label}</span>
+      <span className="studio-compact-field-value">
+        {value}
+        {unit ? <span className="studio-compact-field-unit">{unit}</span> : null}
+      </span>
+    </div>
   );
 }
 
@@ -247,12 +257,9 @@ export function StudioApp() {
   const deferredDocument = useDeferredValue(activeDocument);
   const leftRailCollapsed = useStudioUiStore((state) => state.leftRailCollapsed);
   const rightPanelOpen = useStudioUiStore((state) => state.rightPanelOpen);
-  const activeControlSection = useStudioUiStore((state) => state.activeControlSection);
   const toggleLeftRail = useStudioUiStore((state) => state.toggleLeftRail);
   const toggleRightPanel = useStudioUiStore((state) => state.toggleRightPanel);
   const setLeftRailCollapsed = useStudioUiStore((state) => state.setLeftRailCollapsed);
-  const setRightPanelOpen = useStudioUiStore((state) => state.setRightPanelOpen);
-  const setActiveControlSection = useStudioUiStore((state) => state.setActiveControlSection);
 
   const previewAsset = deferredDocument.asset ?? PLACEHOLDER_ASSET;
   const previewMarkup = buildPreviewMarkup(previewAsset, deferredDocument.controls);
@@ -626,16 +633,18 @@ export function StudioApp() {
 
         {rightPanelOpen ? (
           <aside className="studio-settings">
-            <div className="studio-settings-stack">
-              <section className="studio-card">
-                <p className="eyebrow">Quick controls</p>
-                <h2 className="studio-card-title">Only the high-impact controls stay visible.</h2>
-                <div className="studio-control-group">
-                  <div className="studio-preset-row">
+            <div className="studio-right-rail">
+              <div className="studio-right-scroll">
+                <RailWidget
+                  title="Projection"
+                  actionLabel="Reset"
+                  onAction={() => updateControl(createDefaultControls())}
+                >
+                  <div className="studio-compact-chip-row">
                     {PROJECTION_PRESETS.map((preset) => (
                       <button
                         key={preset.label}
-                        className="ui-button ui-button-secondary"
+                        className="studio-chip"
                         type="button"
                         onClick={() => updateControl(preset.values)}
                       >
@@ -643,7 +652,108 @@ export function StudioApp() {
                       </button>
                     ))}
                   </div>
+                  <div className="studio-compact-fields">
+                    <ValueField label="R" value={String(activeDocument.controls.rotationDeg)} unit="°" />
+                    <ValueField label="Sk" value={String(activeDocument.controls.skewXDeg)} unit="°" />
+                    <ValueField
+                      label="Y"
+                      value={activeDocument.controls.scaleY.toFixed(2)}
+                      unit="×"
+                    />
+                    <ValueField
+                      emphasis
+                      label="Fit"
+                      value={activeDocument.controls.fitScale.toFixed(2)}
+                      unit="×"
+                    />
+                  </div>
+                  <RangeField
+                    label="Rotation"
+                    min={-70}
+                    max={70}
+                    step={1}
+                    value={activeDocument.controls.rotationDeg}
+                    onChange={(value) => updateControl({ rotationDeg: value })}
+                  />
+                  <RangeField
+                    label="Skew X"
+                    min={-70}
+                    max={70}
+                    step={1}
+                    value={activeDocument.controls.skewXDeg}
+                    onChange={(value) => updateControl({ skewXDeg: value })}
+                  />
+                  <RangeField
+                    label="Scale Y"
+                    min={0.35}
+                    max={1.4}
+                    step={0.01}
+                    value={activeDocument.controls.scaleY}
+                    onChange={(value) => updateControl({ scaleY: value })}
+                  />
+                  <RangeField
+                    label="Fit scale"
+                    min={0.5}
+                    max={2.3}
+                    step={0.01}
+                    value={activeDocument.controls.fitScale}
+                    onChange={(value) => updateControl({ fitScale: value })}
+                  />
+                </RailWidget>
 
+                <RailWidget title="Appearance">
+                  <div className="studio-color-swatches">
+                    <label className="studio-swatch-field" htmlFor="art-color">
+                      <span className="studio-swatch-label">Fill</span>
+                      <input
+                        id="art-color"
+                        aria-label="Art color"
+                        className="studio-swatch-input"
+                        type="color"
+                        value={activeDocument.controls.artColor}
+                        onChange={(event) => updateControl({ artColor: event.target.value })}
+                      />
+                    </label>
+                    <label className="studio-swatch-field" htmlFor="preview-color">
+                      <span className="studio-swatch-label">BG</span>
+                      <input
+                        id="preview-color"
+                        aria-label="Preview background color"
+                        className="studio-swatch-input"
+                        type="color"
+                        value={activeDocument.controls.previewBgColor}
+                        onChange={(event) => updateControl({ previewBgColor: event.target.value })}
+                      />
+                    </label>
+                    <div className="studio-swatch-static" style={{ backgroundColor: "var(--fg-1)" }} />
+                    <div className="studio-swatch-static" style={{ backgroundColor: "var(--fg-3)" }} />
+                    <div className="studio-swatch-static studio-swatch-static-transparent" />
+                  </div>
+                  <RangeField
+                    label="Stroke weight"
+                    min={0.4}
+                    max={3}
+                    step={0.05}
+                    value={activeDocument.controls.strokeScale}
+                    onChange={(value) => updateControl({ strokeScale: value })}
+                  />
+                  <div className="studio-compact-fields studio-compact-fields-two">
+                    <ValueField label="Art" value={activeDocument.controls.artColor.toUpperCase()} />
+                    <ValueField
+                      label="Prev"
+                      value={activeDocument.controls.previewBgColor.toUpperCase()}
+                    />
+                  </div>
+                </RailWidget>
+
+                <RailWidget title="Trail">
+                  <div className="studio-compact-fields studio-compact-fields-two">
+                    <ValueField label="Count" value={String(visibleTrailCount)} />
+                    <ValueField
+                      label="Mode"
+                      value={activeDocument.controls.useCustomTrailPattern ? "Row" : "Linear"}
+                    />
+                  </div>
                   <RangeField
                     label="Trail count"
                     min={0}
@@ -653,217 +763,106 @@ export function StudioApp() {
                     value={activeDocument.controls.trailCount}
                     onChange={(value) => updateControl({ trailCount: value })}
                   />
-
                   <RangeField
-                    label="Stroke weight"
-                    min={0.4}
-                    max={3}
-                    step={0.05}
-                    value={activeDocument.controls.strokeScale}
-                    onChange={(value) => updateControl({ strokeScale: value })}
+                    label="Offset X"
+                    min={-80}
+                    max={80}
+                    step={1}
+                    value={activeDocument.controls.trailOffsetX}
+                    onChange={(value) => updateControl({ trailOffsetX: value })}
                   />
+                  <RangeField
+                    label="Offset Y"
+                    min={-80}
+                    max={80}
+                    step={1}
+                    value={activeDocument.controls.trailOffsetY}
+                    onChange={(value) => updateControl({ trailOffsetY: value })}
+                  />
+                  <RangeField
+                    label="Opacity start"
+                    min={0}
+                    max={1}
+                    step={0.01}
+                    disabled={activeDocument.controls.useCustomTrailPattern}
+                    value={activeDocument.controls.opacityStart}
+                    onChange={(value) => updateControl({ opacityStart: value })}
+                  />
+                  <RangeField
+                    label="Opacity end"
+                    min={0}
+                    max={1}
+                    step={0.01}
+                    disabled={activeDocument.controls.useCustomTrailPattern}
+                    value={activeDocument.controls.opacityEnd}
+                    onChange={(value) => updateControl({ opacityEnd: value })}
+                  />
+                  <ToggleField
+                    label="Reverse trail"
+                    description="Send the stack in the opposite direction."
+                    checked={activeDocument.controls.reverseTrail}
+                    onChange={(checked) => updateControl({ reverseTrail: checked })}
+                  />
+                  <ToggleField
+                    label="Use custom trail row"
+                    description={`${enabledPatternCount} active slot${enabledPatternCount === 1 ? "" : "s"} in the current row pattern.`}
+                    checked={activeDocument.controls.useCustomTrailPattern}
+                    onChange={(checked) => updateControl({ useCustomTrailPattern: checked })}
+                  />
+                </RailWidget>
 
-                  <div className="studio-inline-grid">
-                    <div className="studio-field">
-                      <label className="studio-field-label" htmlFor="art-color">
-                        Art color
-                      </label>
-                      <input
-                        id="art-color"
-                        aria-label="Art color"
-                        className="studio-color"
-                        type="color"
-                        value={activeDocument.controls.artColor}
-                        onChange={(event) => updateControl({ artColor: event.target.value })}
-                      />
-                    </div>
-
-                    <div className="studio-field">
-                      <label className="studio-field-label" htmlFor="preview-color">
-                        Preview background
-                      </label>
-                      <input
-                        id="preview-color"
-                        aria-label="Preview background color"
-                        className="studio-color"
-                        type="color"
-                        value={activeDocument.controls.previewBgColor}
-                        onChange={(event) => updateControl({ previewBgColor: event.target.value })}
-                      />
-                    </div>
-                  </div>
-                </div>
-              </section>
-
-              <div className="studio-section-tabs" role="tablist" aria-label="Editor sections">
-                <button
-                  className={`studio-section-tab ${activeControlSection === "transform" ? "is-active" : ""}`}
-                  type="button"
-                  onClick={() => setActiveControlSection("transform")}
-                >
-                  Transform
-                </button>
-                <button
-                  className={`studio-section-tab ${activeControlSection === "trail" ? "is-active" : ""}`}
-                  type="button"
-                  onClick={() => setActiveControlSection("trail")}
-                >
-                  Trail
-                </button>
-                <button
-                  className={`studio-section-tab ${activeControlSection === "export" ? "is-active" : ""}`}
-                  type="button"
-                  onClick={() => setActiveControlSection("export")}
-                >
-                  Export
-                </button>
-              </div>
-
-              <DisclosureCard
-                section="transform"
-                title="Transform"
-                description="Fine-tune the full SVG group when the presets are close but not exact."
-                summary={transformSummary}
-                activeSection={activeControlSection}
-                onOpen={setActiveControlSection}
-              >
-                <RangeField
-                  label="Rotation"
-                  min={-70}
-                  max={70}
-                  step={1}
-                  value={activeDocument.controls.rotationDeg}
-                  onChange={(value) => updateControl({ rotationDeg: value })}
-                />
-                <RangeField
-                  label="Skew X"
-                  min={-70}
-                  max={70}
-                  step={1}
-                  value={activeDocument.controls.skewXDeg}
-                  onChange={(value) => updateControl({ skewXDeg: value })}
-                />
-                <RangeField
-                  label="Scale Y"
-                  min={0.35}
-                  max={1.4}
-                  step={0.01}
-                  value={activeDocument.controls.scaleY}
-                  onChange={(value) => updateControl({ scaleY: value })}
-                />
-                <RangeField
-                  label="Fit scale"
-                  min={0.5}
-                  max={2.3}
-                  step={0.01}
-                  value={activeDocument.controls.fitScale}
-                  onChange={(value) => updateControl({ fitScale: value })}
-                />
-                <button className="ui-button ui-button-secondary" type="button" onClick={() => updateControl(createDefaultControls())}>
-                  Reset to cleaner defaults
-                </button>
-              </DisclosureCard>
-
-              <DisclosureCard
-                section="trail"
-                title="Trail"
-                description="Keep the simple spacing controls, or switch to the custom row for gaps and matte slots."
-                summary={trailSummary}
-                activeSection={activeControlSection}
-                onOpen={setActiveControlSection}
-              >
-                <RangeField
-                  label="Offset X"
-                  min={-80}
-                  max={80}
-                  step={1}
-                  value={activeDocument.controls.trailOffsetX}
-                  onChange={(value) => updateControl({ trailOffsetX: value })}
-                />
-                <RangeField
-                  label="Offset Y"
-                  min={-80}
-                  max={80}
-                  step={1}
-                  value={activeDocument.controls.trailOffsetY}
-                  onChange={(value) => updateControl({ trailOffsetY: value })}
-                />
-                <RangeField
-                  label="Opacity start"
-                  min={0}
-                  max={1}
-                  step={0.01}
-                  disabled={activeDocument.controls.useCustomTrailPattern}
-                  value={activeDocument.controls.opacityStart}
-                  onChange={(value) => updateControl({ opacityStart: value })}
-                />
-                <RangeField
-                  label="Opacity end"
-                  min={0}
-                  max={1}
-                  step={0.01}
-                  disabled={activeDocument.controls.useCustomTrailPattern}
-                  value={activeDocument.controls.opacityEnd}
-                  onChange={(value) => updateControl({ opacityEnd: value })}
-                />
-                <ToggleField
-                  label="Reverse trail"
-                  description="Send the stack in the opposite direction."
-                  checked={activeDocument.controls.reverseTrail}
-                  onChange={(checked) => updateControl({ reverseTrail: checked })}
-                />
-                <ToggleField
-                  label="Use custom trail row"
-                  description={`${enabledPatternCount} active slot${enabledPatternCount === 1 ? "" : "s"} in the current row pattern.`}
-                  checked={activeDocument.controls.useCustomTrailPattern}
-                  onChange={(checked) => updateControl({ useCustomTrailPattern: checked })}
-                />
                 {activeDocument.controls.useCustomTrailPattern ? (
-                  <TrailPatternEditor
-                    controls={activeDocument.controls}
-                    selectedIndex={selectedTrailSlot}
-                    onSelect={setSelectedTrailSlot}
-                    onUpdate={(nextCell) => updateTrailPatternCell(selectedTrailSlot, nextCell)}
-                  />
+                  <RailWidget title="Trail Row">
+                    <TrailPatternEditor
+                      controls={activeDocument.controls}
+                      selectedIndex={selectedTrailSlot}
+                      onSelect={setSelectedTrailSlot}
+                      onUpdate={(nextCell) => updateTrailPatternCell(selectedTrailSlot, nextCell)}
+                    />
+                  </RailWidget>
                 ) : null}
-              </DisclosureCard>
 
-              <DisclosureCard
-                section="export"
-                title="Export"
-                description="Transparent output stays clean. Preview background never gets baked in."
-                summary="Transparent SVG + PNG"
-                activeSection={activeControlSection}
-                onOpen={setActiveControlSection}
-              >
-                <div className="studio-export-grid">
-                  <button
-                    className="ui-button ui-button-key"
-                    type="button"
-                    disabled={!hasAsset || isExporting}
-                    onClick={() => void handleExport("svg")}
-                  >
-                    Export SVG
-                  </button>
-                  <button
-                    className="ui-button ui-button-secondary"
-                    type="button"
-                    disabled={!hasAsset || isExporting}
-                    onClick={() => void handleExport("png")}
-                  >
-                    Export PNG
-                  </button>
-                </div>
-                <p className="studio-note">
-                  {hasAsset
-                    ? "Stroke scaling, custom trail rows, and matte trails are preserved in export."
-                    : "Load an SVG before exporting."}
-                </p>
-              </DisclosureCard>
-
-              <button className="ui-button ui-button-ghost" type="button" onClick={() => setRightPanelOpen(false)}>
-                Hide controls
-              </button>
+                <RailWidget title="Export">
+                  <div className="studio-compact-chip-row">
+                    <span className="studio-chip studio-chip-key">SVG</span>
+                    <span className="studio-chip">PNG</span>
+                    <span className="studio-chip">Transparent</span>
+                  </div>
+                  <div className="studio-compact-fields studio-compact-fields-two">
+                    <ValueField label="Bounds" value={hasAsset ? "tight" : "—"} />
+                    <ValueField label="Alpha" value="clear" />
+                  </div>
+                  <div className="studio-export-stack">
+                    <button
+                      className="studio-export-action"
+                      type="button"
+                      disabled={!hasAsset || isExporting}
+                      onClick={() => void handleExport("svg")}
+                    >
+                      <span>Export SVG</span>
+                      <span className="studio-export-meta">
+                        {hasAsset ? "vector" : "disabled"}
+                      </span>
+                    </button>
+                    <button
+                      className="studio-export-action studio-export-action-secondary"
+                      type="button"
+                      disabled={!hasAsset || isExporting}
+                      onClick={() => void handleExport("png")}
+                    >
+                      <span>Export PNG</span>
+                      <span className="studio-export-meta">
+                        {hasAsset ? "bitmap" : "disabled"}
+                      </span>
+                    </button>
+                  </div>
+                  <p className="studio-note">
+                    {hasAsset
+                      ? "Stroke scaling, custom trail rows, and matte trails are preserved in export."
+                      : "Load an SVG before exporting."}
+                  </p>
+                </RailWidget>
+              </div>
             </div>
           </aside>
         ) : null}

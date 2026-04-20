@@ -44,7 +44,6 @@ test("imports, edits, persists, and exports a draft", async ({ page }) => {
   await page.getByLabel("Draft name").fill("Orbit Card");
   await expect(page.getByText("viewBox 0 0 48 48")).toBeVisible();
 
-  await page.getByRole("button", { name: "Trail" }).click();
   await page.getByLabel("Use custom trail row").check();
   await page.getByRole("button", { name: "4" }).click();
   await page.getByLabel("Active trail cell").check();
@@ -54,7 +53,6 @@ test("imports, edits, persists, and exports a draft", async ({ page }) => {
   await page.getByRole("button", { name: "New draft" }).click();
   await page.getByRole("button", { name: /Orbit Card/i }).click();
 
-  await page.getByRole("button", { name: "Export" }).click();
   const [svgDownload] = await Promise.all([
     page.waitForEvent("download"),
     page.getByRole("button", { name: "Export SVG" }).click(),
