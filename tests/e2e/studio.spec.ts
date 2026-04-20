@@ -25,6 +25,7 @@ test("landing, redirect, and theme persistence work across routes", async ({ pag
   await expect(page.getByRole("complementary", { name: "Controls drawer" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Hide library" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Hide controls" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "More information" })).toHaveCount(0);
   await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
   expect(await page.evaluate(() => document.documentElement.scrollHeight <= window.innerHeight + 1)).toBe(
     true,
@@ -51,6 +52,28 @@ test("imports, edits, persists, and exports a draft", async ({ page }) => {
   await expect(page.getByText("viewBox 0 0 48 48")).toBeVisible();
   await expect(page.getByTestId("canvas-handle-rotate")).toBeVisible();
   await expect(page.getByTestId("canvas-handle-trail")).toBeVisible();
+  await expect(page.getByRole("button", { name: "More information" })).toHaveCount(0);
+
+  const rotationTooltipAnchor = page
+    .locator(".studio-range-header .studio-tooltip-anchor")
+    .filter({ hasText: "Rotation" })
+    .first();
+  await rotationTooltipAnchor.hover();
+  await expect(page.getByRole("tooltip")).toBeVisible();
+  await expect(page.getByRole("tooltip")).toHaveCount(1);
+
+  const tooltipBox = await page.getByRole("tooltip").boundingBox();
+  const viewport = page.viewportSize();
+  if (!tooltipBox || !viewport) {
+    throw new Error("Tooltip did not render a measurable box.");
+  }
+  expect(tooltipBox.x).toBeGreaterThanOrEqual(0);
+  expect(tooltipBox.y).toBeGreaterThanOrEqual(0);
+  expect(tooltipBox.x + tooltipBox.width).toBeLessThanOrEqual(viewport.width);
+  expect(tooltipBox.y + tooltipBox.height).toBeLessThanOrEqual(viewport.height);
+
+  await rotationTooltipAnchor.focus();
+  await expect(page.getByRole("tooltip")).toBeVisible();
 
   const rotationInput = page.getByRole("spinbutton", { name: "Rotation" });
   const initialRotation = await rotationInput.inputValue();
@@ -88,11 +111,11 @@ test("imports, edits, persists, and exports a draft", async ({ page }) => {
   await expect(offsetXInput).not.toHaveValue(initialOffsetX);
 
   await page.getByLabel("Collapse library drawer").click();
-  await expect(page.locator(".studio-drawer-tab-left")).toBeVisible();
-  await page.locator(".studio-drawer-tab-left").click();
+  await expect(page.getByLabel("Expand library drawer")).toBeVisible();
+  await page.getByLabel("Expand library drawer").click();
   await expect(page.getByLabel("Collapse library drawer")).toBeVisible();
 
-  await page.getByRole("button", { name: "Create draft" }).click();
+  await page.getByRole("button", { name: "New project" }).click();
   await page.getByRole("button", { name: /Orbit Card/i }).click();
 
   const [svgDownload] = await Promise.all([

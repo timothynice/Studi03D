@@ -3,17 +3,23 @@
 import Image from "next/image";
 import Link from "next/link";
 import {
+  createContext,
   startTransition,
   useDeferredValue,
   useEffect,
   useEffectEvent,
   useId,
+  useContext,
+  useLayoutEffect,
   useRef,
   useState,
   useTransition,
+  type ComponentPropsWithoutRef,
   type CSSProperties,
+  type ReactNode,
   type PointerEvent as ReactPointerEvent,
 } from "react";
+import { createPortal } from "react-dom";
 
 import {
   createDefaultControls,
@@ -46,6 +52,8 @@ const TABLET_MAX = 1279;
 
 type ViewportMode = "desktop" | "tablet" | "mobile";
 type CanvasDragMode = "rotate" | "skew" | "scale" | "trail" | null;
+type LibrarySectionId = "projects" | "import" | "generate";
+type TooltipPlacement = "top" | "bottom";
 
 interface StudioCanvasDragState extends StudioCanvasInteractionState {
   dragMode: CanvasDragMode;
@@ -64,6 +72,34 @@ const DEFAULT_CANVAS_DRAG_STATE: StudioCanvasDragState = {
   startFitScale: 1,
   startDistance: 1,
 };
+
+interface TooltipState {
+  id: string;
+  anchorElement: HTMLElement;
+  content: ReactNode;
+  preferredPlacement: TooltipPlacement;
+}
+
+interface TooltipPosition {
+  left: number;
+  top: number;
+  placement: TooltipPlacement;
+  ready: boolean;
+}
+
+interface TooltipContextValue {
+  showTooltip: (tooltip: TooltipState) => void;
+  hideTooltip: (id: string) => void;
+}
+
+const DEFAULT_TOOLTIP_POSITION: TooltipPosition = {
+  left: 0,
+  top: 0,
+  placement: "bottom",
+  ready: false,
+};
+
+const TooltipContext = createContext<TooltipContextValue | null>(null);
 
 function getViewportMode(width: number): ViewportMode {
   if (width <= MOBILE_MAX) {
@@ -85,6 +121,18 @@ function formatNumericValue(value: number) {
   return Number(value.toFixed(3));
 }
 
+function joinClassNames(...classNames: Array<string | false | null | undefined>) {
+  return classNames.filter(Boolean).join(" ");
+}
+
+function shouldShowTooltip() {
+  if (typeof window === "undefined") {
+    return false;
+  }
+
+  return window.innerWidth > MOBILE_MAX && window.matchMedia("(hover: hover)").matches;
+}
+
 function DrawerToggleIcon({
   side,
   open,
@@ -93,18 +141,46 @@ function DrawerToggleIcon({
   open: boolean;
 }>) {
   const isLeft = side === "left";
-  const points = open
+  const chevronPath = open
     ? isLeft
-      ? "15,6 10,10 15,14"
-      : "9,6 14,10 9,14"
+      ? "M10.75 4.25L6.5 8L10.75 11.75"
+      : "M5.25 4.25L9.5 8L5.25 11.75"
     : isLeft
-      ? "9,6 14,10 9,14"
-      : "15,6 10,10 15,14";
+      ? "M5.25 4.25L9.5 8L5.25 11.75"
+      : "M10.75 4.25L6.5 8L10.75 11.75";
 
   return (
-    <svg aria-hidden="true" className="studio-icon" viewBox="0 0 20 20">
-      <rect x={isLeft ? 3 : 11} y="3" width="6" height="14" rx="2" />
-      <path d={`M${points}`} fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" />
+    <svg aria-hidden="true" className="studio-icon" viewBox="0 0 16 16">
+      <path
+        d={isLeft ? "M4 2.5V13.5" : "M12 2.5V13.5"}
+        fill="none"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeWidth="1.25"
+      />
+      <path
+        d={chevronPath}
+        fill="none"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth="1.5"
+      />
+    </svg>
+  );
+}
+
+function SectionChevronIcon({ open }: Readonly<{ open: boolean }>) {
+  return (
+    <svg aria-hidden="true" className="studio-section-chevron-icon" viewBox="0 0 16 16">
+      <path
+        d={open ? "M4.25 9.75L8 6L11.75 9.75" : "M4.25 6.25L8 10L11.75 6.25"}
+        fill="none"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth="1.5"
+      />
     </svg>
   );
 }
@@ -138,27 +214,267 @@ function ThemeToggleIcon({ theme }: Readonly<{ theme: ThemeMode }>) {
   );
 }
 
-function InfoTip({
+function TooltipProvider({
   children,
 }: Readonly<{
-  children: React.ReactNode;
+  children: ReactNode;
 }>) {
-  const tooltipId = useId();
+  const [activeTooltip, setActiveTooltip] = useState<TooltipState | null>(null);
+  const [position, setPosition] = useState<TooltipPosition>(DEFAULT_TOOLTIP_POSITION);
+  const tooltipRef = useRef<HTMLDivElement | null>(null);
+
+  const updateTooltipPosition = useEffectEvent(() => {
+    if (!activeTooltip || !tooltipRef.current) {
+      return;
+    }
+
+    if (!document.body.contains(activeTooltip.anchorElement)) {
+      setActiveTooltip(null);
+      return;
+    }
+
+    const anchorRect = activeTooltip.anchorElement.getBoundingClientRect();
+    const tooltipRect = tooltipRef.current.getBoundingClientRect();
+    const viewportWidth = window.innerWidth;
+    const viewportHeight = window.innerHeight;
+    const margin = 12;
+    const gap = 10;
+    let placement = activeTooltip.preferredPlacement;
+    let top = anchorRect.bottom + gap;
+
+    if (
+      placement === "bottom" &&
+      top + tooltipRect.height > viewportHeight - margin &&
+      anchorRect.top - gap - tooltipRect.height >= margin
+    ) {
+      placement = "top";
+      top = anchorRect.top - gap - tooltipRect.height;
+    } else if (placement === "top") {
+      const preferredTop = anchorRect.top - gap - tooltipRect.height;
+
+      if (
+        preferredTop < margin &&
+        anchorRect.bottom + gap + tooltipRect.height <= viewportHeight - margin
+      ) {
+        placement = "bottom";
+        top = anchorRect.bottom + gap;
+      } else {
+        top = preferredTop;
+      }
+    }
+
+    const maxLeft = viewportWidth - margin - tooltipRect.width;
+    const maxTop = viewportHeight - margin - tooltipRect.height;
+    const left = Math.min(Math.max(margin, anchorRect.left), Math.max(margin, maxLeft));
+
+    setPosition({
+      left,
+      top: Math.min(Math.max(margin, top), Math.max(margin, maxTop)),
+      placement,
+      ready: true,
+    });
+  });
+
+  useLayoutEffect(() => {
+    if (!activeTooltip) {
+      return;
+    }
+
+    const frameId = window.requestAnimationFrame(() => {
+      updateTooltipPosition();
+    });
+
+    const handleUpdate = () => {
+      updateTooltipPosition();
+    };
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setActiveTooltip(null);
+      }
+    };
+
+    window.addEventListener("resize", handleUpdate);
+    window.addEventListener("scroll", handleUpdate, true);
+    window.addEventListener("keydown", handleKeyDown);
+
+    return () => {
+      window.cancelAnimationFrame(frameId);
+      window.removeEventListener("resize", handleUpdate);
+      window.removeEventListener("scroll", handleUpdate, true);
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [activeTooltip]);
 
   return (
-    <span className="studio-tooltip-wrap">
-      <button
-        aria-describedby={tooltipId}
-        aria-label="More information"
-        className="studio-tooltip-trigger"
-        type="button"
-      >
-        <span aria-hidden="true">i</span>
-      </button>
-      <span id={tooltipId} role="tooltip" className="studio-tooltip-content">
-        {children}
-      </span>
+    <TooltipContext.Provider
+      value={{
+        showTooltip: (tooltip) => {
+          setActiveTooltip(tooltip);
+          setPosition(DEFAULT_TOOLTIP_POSITION);
+        },
+        hideTooltip: (id) => {
+          setActiveTooltip((current) => (current?.id === id ? null : current));
+        },
+      }}
+    >
+      {children}
+      {typeof document !== "undefined" && activeTooltip
+        ? createPortal(
+            <div
+              ref={tooltipRef}
+              aria-hidden={!position.ready}
+              className={joinClassNames(
+                "studio-tooltip-layer",
+                position.ready ? "is-visible" : null,
+              )}
+              data-placement={position.placement}
+              role="tooltip"
+              style={{
+                left: `${position.left}px`,
+                top: `${position.top}px`,
+              }}
+            >
+              {activeTooltip.content}
+            </div>,
+            document.body,
+          )
+        : null}
+    </TooltipContext.Provider>
+  );
+}
+
+function TooltipAnchor({
+  tooltip,
+  className,
+  preferredPlacement = "bottom",
+  children,
+}: Readonly<{
+  tooltip?: ReactNode;
+  className?: string;
+  preferredPlacement?: TooltipPlacement;
+  children: ReactNode;
+}>) {
+  const tooltipContext = useContext(TooltipContext);
+  const tooltipId = useId();
+  const anchorRef = useRef<HTMLSpanElement | null>(null);
+
+  const openTooltip = () => {
+    if (!tooltip || !tooltipContext || !anchorRef.current || !shouldShowTooltip()) {
+      return;
+    }
+
+    tooltipContext.showTooltip({
+      id: tooltipId,
+      anchorElement: anchorRef.current,
+      content: tooltip,
+      preferredPlacement,
+    });
+  };
+
+  const closeTooltip = () => {
+    if (!tooltipContext) {
+      return;
+    }
+
+    tooltipContext.hideTooltip(tooltipId);
+  };
+
+  return (
+    <span
+      ref={anchorRef}
+      className={joinClassNames("studio-tooltip-anchor", tooltip ? "has-tooltip" : null, className)}
+      tabIndex={tooltip ? 0 : undefined}
+      onBlur={tooltip ? closeTooltip : undefined}
+      onFocus={tooltip ? openTooltip : undefined}
+      onPointerEnter={
+        tooltip
+          ? (event) => {
+              if (event.pointerType !== "mouse") {
+                return;
+              }
+
+              openTooltip();
+            }
+          : undefined
+      }
+      onPointerLeave={tooltip ? closeTooltip : undefined}
+    >
+      {children}
     </span>
+  );
+}
+
+function TooltipButtonAnchor({
+  tooltip,
+  preferredPlacement = "bottom",
+  className,
+  children,
+  onBlur,
+  onFocus,
+  onPointerEnter,
+  onPointerLeave,
+  ...buttonProps
+}: Readonly<
+  {
+    tooltip?: ReactNode;
+    preferredPlacement?: TooltipPlacement;
+  } & ComponentPropsWithoutRef<"button">
+>) {
+  const tooltipContext = useContext(TooltipContext);
+  const tooltipId = useId();
+  const anchorRef = useRef<HTMLButtonElement | null>(null);
+
+  const openTooltip = () => {
+    if (!tooltip || !tooltipContext || !anchorRef.current || !shouldShowTooltip()) {
+      return;
+    }
+
+    tooltipContext.showTooltip({
+      id: tooltipId,
+      anchorElement: anchorRef.current,
+      content: tooltip,
+      preferredPlacement,
+    });
+  };
+
+  const closeTooltip = () => {
+    if (!tooltipContext) {
+      return;
+    }
+
+    tooltipContext.hideTooltip(tooltipId);
+  };
+
+  return (
+    <button
+      {...buttonProps}
+      ref={anchorRef}
+      className={joinClassNames("studio-tooltip-anchor", tooltip ? "has-tooltip" : null, className)}
+      onBlur={(event) => {
+        onBlur?.(event);
+        closeTooltip();
+      }}
+      onFocus={(event) => {
+        onFocus?.(event);
+        openTooltip();
+      }}
+      onPointerEnter={(event) => {
+        onPointerEnter?.(event);
+
+        if (event.pointerType !== "mouse") {
+          return;
+        }
+
+        openTooltip();
+      }}
+      onPointerLeave={(event) => {
+        onPointerLeave?.(event);
+        closeTooltip();
+      }}
+    >
+      {children}
+    </button>
   );
 }
 
@@ -186,10 +502,9 @@ function RangeField({
   return (
     <div className="studio-range-field">
       <div className="studio-range-header">
-        <span className="studio-field-heading">
+        <TooltipAnchor className="studio-field-heading" tooltip={tooltip}>
           <label htmlFor={`${fieldId}-number`}>{label}</label>
-          {tooltip ? <InfoTip>{tooltip}</InfoTip> : null}
-        </span>
+        </TooltipAnchor>
         <input
           id={`${fieldId}-number`}
           aria-label={label}
@@ -231,10 +546,9 @@ function ToggleField({
 }>) {
   return (
     <label className="studio-toggle-field">
-      <span className="studio-toggle-copy">
+      <TooltipAnchor className="studio-toggle-copy" tooltip={tooltip}>
         <strong>{label}</strong>
-        {tooltip ? <InfoTip>{tooltip}</InfoTip> : null}
-      </span>
+      </TooltipAnchor>
       <span className="studio-toggle-control">
         <input
           aria-label={label}
@@ -281,10 +595,9 @@ function RailWidget({
   return (
     <section className="studio-rail-widget">
       <div className="studio-rail-widget-head">
-        <div className="studio-rail-heading">
+        <TooltipAnchor className="studio-rail-heading" tooltip={info}>
           <p className="studio-rail-title">{title}</p>
-          {info ? <InfoTip>{info}</InfoTip> : null}
-        </div>
+        </TooltipAnchor>
         {actionLabel && onAction ? (
           <button className="studio-rail-icon-button" type="button" onClick={onAction}>
             {actionLabel}
@@ -299,21 +612,31 @@ function RailWidget({
 function DrawerSection({
   title,
   info,
+  open,
+  onToggle,
   children,
 }: Readonly<{
   title: string;
   info?: React.ReactNode;
+  open: boolean;
+  onToggle: () => void;
   children: React.ReactNode;
 }>) {
   return (
-    <section className="studio-drawer-section">
+    <section className={`studio-drawer-section ${open ? "is-expanded" : "is-collapsed"}`}>
       <div className="studio-drawer-section-head">
-        <div className="studio-rail-heading">
-          <p className="studio-rail-title">{title}</p>
-          {info ? <InfoTip>{info}</InfoTip> : null}
-        </div>
+        <TooltipButtonAnchor
+          aria-expanded={open}
+          className="studio-drawer-section-toggle"
+          tooltip={info}
+          type="button"
+          onClick={onToggle}
+        >
+          <span className="studio-rail-title">{title}</span>
+          <SectionChevronIcon open={open} />
+        </TooltipButtonAnchor>
       </div>
-      <div className="studio-drawer-section-body">{children}</div>
+      {open ? <div className="studio-drawer-section-body">{children}</div> : null}
     </section>
   );
 }
@@ -457,17 +780,17 @@ function DrawerHeader({
   const label = `${open ? "Collapse" : "Expand"} ${title.toLowerCase()} drawer`;
 
   return (
-    <div className="studio-drawer-header">
+    <div className={`studio-drawer-header ${open ? "is-open" : "is-collapsed"}`}>
       {side === "left" ? (
         <>
           <button aria-label={label} className="studio-icon-button" type="button" onClick={onToggle}>
             <DrawerToggleIcon side={side} open={open} />
           </button>
-          <p className="studio-drawer-title">{title}</p>
+          {open ? <p className="studio-drawer-title">{title}</p> : null}
         </>
       ) : (
         <>
-          <p className="studio-drawer-title">{title}</p>
+          {open ? <p className="studio-drawer-title">{title}</p> : null}
           <button aria-label={label} className="studio-icon-button" type="button" onClick={onToggle}>
             <DrawerToggleIcon side={side} open={open} />
           </button>
@@ -511,6 +834,11 @@ export function StudioApp() {
   const [isPending, startPendingTransition] = useTransition();
   const [isExporting, setIsExporting] = useState(false);
   const [selectedTrailSlot, setSelectedTrailSlot] = useState(0);
+  const [leftSectionState, setLeftSectionState] = useState<Record<LibrarySectionId, boolean>>({
+    projects: true,
+    import: !activeDocument.asset,
+    generate: false,
+  });
   const [previewCanvasBox, setPreviewCanvasBox] = useState<CanvasBox | null>(null);
   const [stageViewport, setStageViewport] = useState<{ width: number; height: number }>({
     width: 1,
@@ -534,18 +862,16 @@ export function StudioApp() {
     canShowCanvasHandles && previewCanvasBox
       ? getCanvasHandleGeometry(activeDocument.asset ?? PLACEHOLDER_ASSET, activeDocument.controls, previewCanvasBox)
       : null;
+  const collapsedDrawerInset = viewportMode === "mobile" ? "0px" : "32px";
 
   const workspaceInsets = {
-    "--studio-left-inset": viewportMode === "desktop" && leftDrawerOpen ? "320px" : "0px",
-    "--studio-right-inset":
-      (viewportMode === "desktop" || viewportMode === "tablet") && rightDrawerOpen ? "364px" : "0px",
+    "--studio-left-inset": viewportMode === "mobile" ? "0px" : leftDrawerOpen ? "320px" : collapsedDrawerInset,
+    "--studio-right-inset": viewportMode === "mobile" ? "0px" : rightDrawerOpen ? "364px" : collapsedDrawerInset,
   } as CSSProperties;
 
-  const isLeftOverlay = viewportMode !== "desktop";
+  const isLeftOverlay = viewportMode === "mobile";
   const isRightOverlay = viewportMode === "mobile";
-  const showOverlayScrim =
-    (viewportMode === "tablet" && leftDrawerOpen) ||
-    (viewportMode === "mobile" && (leftDrawerOpen || rightDrawerOpen));
+  const showOverlayScrim = viewportMode === "mobile" && (leftDrawerOpen || rightDrawerOpen);
 
   function updateControl(patch: Partial<StudioControls>) {
     updateActiveControls(patch);
@@ -862,6 +1188,7 @@ export function StudioApp() {
             asset.detectedColorCount === 1 ? "" : "s"
           }.`,
         );
+        revealImportSection();
 
         if (suggestedName && /^Draft \d+$/.test(activeDocument.name) && !activeDocument.asset) {
           renameDraft(activeDocument.id, suggestedName);
@@ -871,6 +1198,7 @@ export function StudioApp() {
       const message = error instanceof Error ? error.message : "The SVG could not be loaded.";
       setImportError(message);
       setImportNotice(null);
+      revealImportSection();
     }
   }
 
@@ -884,6 +1212,7 @@ export function StudioApp() {
     if (!isSvgFile) {
       setImportError("Only SVG files are supported in V1.");
       setImportNotice(null);
+      revealImportSection();
       return;
     }
 
@@ -911,6 +1240,7 @@ export function StudioApp() {
       setImportError(null);
     } catch (error) {
       setImportError(error instanceof Error ? error.message : "The export failed.");
+      revealImportSection();
     } finally {
       setIsExporting(false);
     }
@@ -938,7 +1268,7 @@ export function StudioApp() {
 
     setDrawerState({
       leftDrawerOpen: nextOpen,
-      activeMobileDrawer: nextOpen && viewportMode === "tablet" ? "left" : null,
+      activeMobileDrawer: null,
     });
   }
 
@@ -967,29 +1297,37 @@ export function StudioApp() {
   }
 
   function closeOverlays() {
-    if (viewportMode === "mobile") {
-      setDrawerState({
-        leftDrawerOpen: false,
-        rightDrawerOpen: false,
-        activeMobileDrawer: null,
-      });
+    if (viewportMode !== "mobile") {
       return;
     }
 
-    if (viewportMode === "tablet" && leftDrawerOpen) {
-      setDrawerState({
-        leftDrawerOpen: false,
-        activeMobileDrawer: null,
-      });
-    }
+    setDrawerState({
+      leftDrawerOpen: false,
+      rightDrawerOpen: false,
+      activeMobileDrawer: null,
+    });
   }
 
   function activateSection(section: StudioUiSection) {
     setActiveControlSection(section);
   }
 
+  function toggleLeftSection(section: LibrarySectionId) {
+    setLeftSectionState((current) => ({
+      ...current,
+      [section]: !current[section],
+    }));
+  }
+
+  function revealImportSection() {
+    setLeftSectionState((current) =>
+      current.import ? current : { ...current, import: true },
+    );
+  }
+
   return (
-    <main className="studio-shell" data-viewport={viewportMode}>
+    <TooltipProvider>
+      <main className="studio-shell" data-viewport={viewportMode}>
       <header className="studio-app-bar">
         <div className="studio-app-bar-left">
           <StudioMark theme={theme} />
@@ -1016,44 +1354,25 @@ export function StudioApp() {
           />
         ) : null}
 
-        {!leftDrawerOpen ? (
-          <button
-            aria-label="Expand library drawer"
-            className="studio-drawer-tab studio-drawer-tab-left"
-            type="button"
-            onClick={handleToggleLeftDrawer}
-          >
-            <DrawerToggleIcon side="left" open={false} />
-          </button>
-        ) : null}
-
-        {!rightDrawerOpen ? (
-          <button
-            aria-label="Expand controls drawer"
-            className="studio-drawer-tab studio-drawer-tab-right"
-            type="button"
-            onClick={handleToggleRightDrawer}
-          >
-            <DrawerToggleIcon side="right" open={false} />
-          </button>
-        ) : null}
-
         <aside
           aria-label="Library drawer"
-          className={`studio-app-drawer studio-app-drawer-left ${leftDrawerOpen ? "is-open" : ""} ${
-            isLeftOverlay ? "is-overlay" : ""
-          }`}
+          className={`studio-app-drawer studio-app-drawer-left ${
+            leftDrawerOpen ? "is-open" : isLeftOverlay ? "" : "is-collapsed"
+          } ${isLeftOverlay ? "is-overlay" : ""}`}
         >
           <DrawerHeader title="Library" side="left" open={leftDrawerOpen} onToggle={handleToggleLeftDrawer} />
+          {leftDrawerOpen ? (
           <div className="studio-drawer-scroll">
             <DrawerSection
-              title="Drafts"
-              info="Drafts are stored locally in this browser and restore on reload."
+              title="Projects"
+              open={leftSectionState.projects}
+              onToggle={() => toggleLeftSection("projects")}
+              info="Projects are stored locally in this browser and restore on reload."
             >
               <div className="studio-field">
                 <span className="studio-field-heading">
                   <label className="studio-field-label" htmlFor="draft-name">
-                    Draft
+                    Name
                   </label>
                 </span>
                 <input
@@ -1067,7 +1386,7 @@ export function StudioApp() {
 
               <div className="studio-inline-actions">
                 <button className="ui-button ui-button-key" type="button" onClick={() => createDraft()}>
-                  Create draft
+                  New project
                 </button>
                 <button
                   className="ui-button ui-button-secondary"
@@ -1104,6 +1423,8 @@ export function StudioApp() {
 
             <DrawerSection
               title="Import"
+              open={leftSectionState.import}
+              onToggle={() => toggleLeftSection("import")}
               info="Load a simple icon SVG from a file or paste raw markup into the current draft."
             >
               <div
@@ -1169,14 +1490,8 @@ export function StudioApp() {
 
               {importNotice ? <p className="studio-inline-status">{importNotice}</p> : null}
               {importError ? <p className="studio-alert studio-alert-error">{importError}</p> : null}
-            </DrawerSection>
-
-            <DrawerSection
-              title="Asset"
-              info="V1 works best with single-color filled or stroked SVGs. Unsupported paint is warned, not blocked."
-            >
               {hasAsset ? (
-                <>
+                <div className="studio-import-summary">
                   <div className="studio-chip-row">
                     {activeDocument.asset?.hasStroke ? <span className="studio-chip">Stroke</span> : null}
                     {activeDocument.asset?.hasFill ? <span className="studio-chip">Fill</span> : null}
@@ -1187,14 +1502,16 @@ export function StudioApp() {
                   </div>
                   <p className="studio-inline-status">viewBox {activeDocument.asset?.viewBox}</p>
                   <WarningList warnings={warningMessages} />
-                </>
+                </div>
               ) : (
                 <p className="studio-inline-status">Placeholder preview is active.</p>
               )}
             </DrawerSection>
 
             <DrawerSection
-              title="Prompt V2"
+              title="Generate"
+              open={leftSectionState.generate}
+              onToggle={() => toggleLeftSection("generate")}
               info="This UI stays visible in V1, but generation remains reserved for a later server-backed release."
             >
               <textarea
@@ -1207,6 +1524,7 @@ export function StudioApp() {
               </button>
             </DrawerSection>
           </div>
+          ) : null}
         </aside>
 
         <section className="studio-workspace">
@@ -1394,11 +1712,12 @@ export function StudioApp() {
 
         <aside
           aria-label="Controls drawer"
-          className={`studio-app-drawer studio-app-drawer-right ${rightDrawerOpen ? "is-open" : ""} ${
-            isRightOverlay ? "is-overlay" : ""
-          }`}
+          className={`studio-app-drawer studio-app-drawer-right ${
+            rightDrawerOpen ? "is-open" : isRightOverlay ? "" : "is-collapsed"
+          } ${isRightOverlay ? "is-overlay" : ""}`}
         >
           <DrawerHeader title="Controls" side="right" open={rightDrawerOpen} onToggle={handleToggleRightDrawer} />
+          {rightDrawerOpen ? (
           <div className="studio-right-rail">
             <div className="studio-right-scroll">
               <RailWidget
@@ -1656,8 +1975,10 @@ export function StudioApp() {
               </RailWidget>
             </div>
           </div>
+          ) : null}
         </aside>
       </div>
-    </main>
+      </main>
+    </TooltipProvider>
   );
 }
