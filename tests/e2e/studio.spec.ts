@@ -21,8 +21,10 @@ test("landing, redirect, and theme persistence work across routes", async ({ pag
   await expect(page).toHaveURL(/\/$/);
 
   await page.goto("/studio");
-  await expect(page.getByLabel("Library drawer")).toBeVisible();
-  await expect(page.getByLabel("Controls drawer")).toBeVisible();
+  await expect(page.getByRole("complementary", { name: "Library drawer" })).toBeVisible();
+  await expect(page.getByRole("complementary", { name: "Controls drawer" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Hide library" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Hide controls" })).toHaveCount(0);
   await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
   expect(await page.evaluate(() => document.documentElement.scrollHeight <= window.innerHeight + 1)).toBe(
     true,
@@ -32,7 +34,7 @@ test("landing, redirect, and theme persistence work across routes", async ({ pag
 test("imports, edits, persists, and exports a draft", async ({ page }) => {
   await page.goto("/studio");
 
-  await expect(page.getByLabel("Library drawer")).toBeVisible();
+  await expect(page.getByRole("complementary", { name: "Library drawer" })).toBeVisible();
 
   await page.getByLabel("Import SVG file").setInputFiles({
     name: "card.svg",
@@ -47,6 +49,22 @@ test("imports, edits, persists, and exports a draft", async ({ page }) => {
   await page.locator("#preview-color").fill("#111827");
   await page.locator("#draft-name").fill("Orbit Card");
   await expect(page.getByText("viewBox 0 0 48 48")).toBeVisible();
+  await expect(page.getByTestId("canvas-handle-rotate")).toBeVisible();
+  await expect(page.getByTestId("canvas-handle-trail")).toBeVisible();
+
+  const rotationInput = page.getByRole("spinbutton", { name: "Rotation" });
+  const initialRotation = await rotationInput.inputValue();
+  const rotateHandle = await page.getByTestId("canvas-handle-rotate").boundingBox();
+  if (!rotateHandle) {
+    throw new Error("Rotate handle did not render.");
+  }
+  await page.mouse.move(rotateHandle.x + rotateHandle.width / 2, rotateHandle.y + rotateHandle.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(rotateHandle.x + rotateHandle.width / 2 + 48, rotateHandle.y + rotateHandle.height / 2 + 24, {
+    steps: 10,
+  });
+  await page.mouse.up();
+  await expect(rotationInput).not.toHaveValue(initialRotation);
 
   await page.getByLabel("Use custom trail row").check();
   await page.getByRole("button", { name: "Advanced trail" }).click();
@@ -55,7 +73,26 @@ test("imports, edits, persists, and exports a draft", async ({ page }) => {
   await page.getByRole("spinbutton", { name: "Slot opacity" }).fill("0.44");
   await page.getByLabel("Dense / matte trail").check();
 
-  await page.getByRole("button", { name: "New draft" }).click();
+  const offsetXInput = page.getByRole("spinbutton", { name: "Offset X" });
+  const initialOffsetX = await offsetXInput.inputValue();
+  const trailHandle = await page.getByTestId("canvas-handle-trail").boundingBox();
+  if (!trailHandle) {
+    throw new Error("Trail handle did not render.");
+  }
+  await page.mouse.move(trailHandle.x + trailHandle.width / 2, trailHandle.y + trailHandle.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(trailHandle.x + trailHandle.width / 2 + 28, trailHandle.y + trailHandle.height / 2 - 20, {
+    steps: 10,
+  });
+  await page.mouse.up();
+  await expect(offsetXInput).not.toHaveValue(initialOffsetX);
+
+  await page.getByLabel("Collapse library drawer").click();
+  await expect(page.locator(".studio-drawer-tab-left")).toBeVisible();
+  await page.locator(".studio-drawer-tab-left").click();
+  await expect(page.getByLabel("Collapse library drawer")).toBeVisible();
+
+  await page.getByRole("button", { name: "Create draft" }).click();
   await page.getByRole("button", { name: /Orbit Card/i }).click();
 
   const [svgDownload] = await Promise.all([

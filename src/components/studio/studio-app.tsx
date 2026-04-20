@@ -12,6 +12,7 @@ import {
   useState,
   useTransition,
   type CSSProperties,
+  type PointerEvent as ReactPointerEvent,
 } from "react";
 
 import {
@@ -20,6 +21,18 @@ import {
   PROJECTION_PRESETS,
   WARNING_COPY,
 } from "@/lib/studio/constants";
+import {
+  CONTROL_LIMITS,
+  fitScaleFromCanvasPoint,
+  getCanvasHandleGeometry,
+  rotationFromCanvasPoint,
+  skewFromCanvasPoint,
+  trailOffsetFromCanvasPoint,
+  type CanvasBox,
+  type CanvasPoint,
+  type StudioCanvasHandle,
+  type StudioCanvasInteractionState,
+} from "@/lib/studio/canvas-handles";
 import { exportTransparentPng, exportTransparentSvg } from "@/lib/studio/export";
 import { normalizeImportedSvg } from "@/lib/studio/svg-normalize";
 import { buildPreviewMarkup } from "@/lib/studio/svg-scene";
@@ -32,6 +45,25 @@ const MOBILE_MAX = 899;
 const TABLET_MAX = 1279;
 
 type ViewportMode = "desktop" | "tablet" | "mobile";
+type CanvasDragMode = "rotate" | "skew" | "scale" | "trail" | null;
+
+interface StudioCanvasDragState extends StudioCanvasInteractionState {
+  dragMode: CanvasDragMode;
+  pointerId: number | null;
+  startFitScale: number;
+  startDistance: number;
+}
+
+const DEFAULT_CANVAS_DRAG_STATE: StudioCanvasDragState = {
+  activeHandle: null,
+  hoverHandle: null,
+  dragOrigin: null,
+  stageBounds: null,
+  dragMode: null,
+  pointerId: null,
+  startFitScale: 1,
+  startDistance: 1,
+};
 
 function getViewportMode(width: number): ViewportMode {
   if (width <= MOBILE_MAX) {
@@ -51,6 +83,59 @@ function toFieldId(label: string) {
 
 function formatNumericValue(value: number) {
   return Number(value.toFixed(3));
+}
+
+function DrawerToggleIcon({
+  side,
+  open,
+}: Readonly<{
+  side: "left" | "right";
+  open: boolean;
+}>) {
+  const isLeft = side === "left";
+  const points = open
+    ? isLeft
+      ? "15,6 10,10 15,14"
+      : "9,6 14,10 9,14"
+    : isLeft
+      ? "9,6 14,10 9,14"
+      : "15,6 10,10 15,14";
+
+  return (
+    <svg aria-hidden="true" className="studio-icon" viewBox="0 0 20 20">
+      <rect x={isLeft ? 3 : 11} y="3" width="6" height="14" rx="2" />
+      <path d={`M${points}`} fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" />
+    </svg>
+  );
+}
+
+function ThemeToggleIcon({ theme }: Readonly<{ theme: ThemeMode }>) {
+  if (theme === "dark") {
+    return (
+      <svg aria-hidden="true" className="studio-icon" viewBox="0 0 20 20">
+        <path
+          d="M10 4.2V2.5M10 17.5v-1.7M15.8 10h1.7M2.5 10h1.7M14.3 5.7l1.2-1.2M4.5 15.5l1.2-1.2M14.3 14.3l1.2 1.2M4.5 4.5l1.2 1.2"
+          fill="none"
+          stroke="currentColor"
+          strokeLinecap="round"
+          strokeWidth="1.3"
+        />
+        <circle cx="10" cy="10" r="3.2" fill="none" stroke="currentColor" strokeWidth="1.3" />
+      </svg>
+    );
+  }
+
+  return (
+    <svg aria-hidden="true" className="studio-icon" viewBox="0 0 20 20">
+      <path
+        d="M12.7 3.3a6.7 6.7 0 1 0 4 11.9A7.5 7.5 0 0 1 12.7 3.3Z"
+        fill="none"
+        stroke="currentColor"
+        strokeLinejoin="round"
+        strokeWidth="1.4"
+      />
+    </svg>
+  );
 }
 
 function InfoTip({
@@ -348,17 +433,47 @@ function TrailPatternEditor({
   );
 }
 
-function StudioBrand({ theme }: Readonly<{ theme: ThemeMode }>) {
+function StudioMark({ theme }: Readonly<{ theme: ThemeMode }>) {
   const markSrc = theme === "dark" ? "/studi0/logo-mark-on-dark.svg" : "/studi0/logo-mark.svg";
 
   return (
     <Link className="studio-app-brand" href="/">
-      <Image alt="" className="brand-mark" height={24} src={markSrc} unoptimized width={24} />
-      <span className="studio-app-brand-copy">
-        <span className="brand-name">Studi03D</span>
-        <span className="brand-meta">Studio</span>
-      </span>
+      <Image alt="" className="studio-brand-mark" height={18} src={markSrc} unoptimized width={18} />
     </Link>
+  );
+}
+
+function DrawerHeader({
+  title,
+  side,
+  open,
+  onToggle,
+}: Readonly<{
+  title: string;
+  side: "left" | "right";
+  open: boolean;
+  onToggle: () => void;
+}>) {
+  const label = `${open ? "Collapse" : "Expand"} ${title.toLowerCase()} drawer`;
+
+  return (
+    <div className="studio-drawer-header">
+      {side === "left" ? (
+        <>
+          <button aria-label={label} className="studio-icon-button" type="button" onClick={onToggle}>
+            <DrawerToggleIcon side={side} open={open} />
+          </button>
+          <p className="studio-drawer-title">{title}</p>
+        </>
+      ) : (
+        <>
+          <p className="studio-drawer-title">{title}</p>
+          <button aria-label={label} className="studio-icon-button" type="button" onClick={onToggle}>
+            <DrawerToggleIcon side={side} open={open} />
+          </button>
+        </>
+      )}
+    </div>
   );
 }
 
@@ -396,14 +511,29 @@ export function StudioApp() {
   const [isPending, startPendingTransition] = useTransition();
   const [isExporting, setIsExporting] = useState(false);
   const [selectedTrailSlot, setSelectedTrailSlot] = useState(0);
+  const [previewCanvasBox, setPreviewCanvasBox] = useState<CanvasBox | null>(null);
+  const [stageViewport, setStageViewport] = useState<{ width: number; height: number }>({
+    width: 1,
+    height: 1,
+  });
+  const [canvasInteraction, setCanvasInteraction] = useState<StudioCanvasDragState>(
+    DEFAULT_CANVAS_DRAG_STATE,
+  );
   const hasPersistedDrawerStateRef = useRef<boolean | null>(null);
   const hasAppliedViewportDefaultsRef = useRef(false);
+  const stageRef = useRef<HTMLDivElement | null>(null);
+  const canvasOverlayRef = useRef<SVGSVGElement | null>(null);
 
   const hasAsset = Boolean(activeDocument.asset);
   const enabledPatternCount = activeDocument.controls.trailPattern.filter((cell) => cell.enabled).length;
   const visibleTrailCount = activeDocument.controls.useCustomTrailPattern
     ? enabledPatternCount
     : activeDocument.controls.trailCount;
+  const canShowCanvasHandles = hasAsset && viewportMode !== "mobile" && previewCanvasBox !== null;
+  const canvasHandleGeometry =
+    canShowCanvasHandles && previewCanvasBox
+      ? getCanvasHandleGeometry(activeDocument.asset ?? PLACEHOLDER_ASSET, activeDocument.controls, previewCanvasBox)
+      : null;
 
   const workspaceInsets = {
     "--studio-left-inset": viewportMode === "desktop" && leftDrawerOpen ? "320px" : "0px",
@@ -535,6 +665,190 @@ export function StudioApp() {
   useEffect(() => {
     syncViewportState(viewportMode);
   }, [activeMobileDrawer, leftDrawerOpen, rightDrawerOpen, viewportMode]);
+
+  const syncCanvasMetrics = useEffectEvent(() => {
+    const stageElement = stageRef.current;
+
+    if (!stageElement) {
+      setPreviewCanvasBox(null);
+      setStageViewport({ width: 1, height: 1 });
+      return;
+    }
+
+    const stageRect = stageElement.getBoundingClientRect();
+    setStageViewport({
+      width: Math.max(1, stageRect.width),
+      height: Math.max(1, stageRect.height),
+    });
+    const svgElement = stageElement.querySelector("svg");
+
+    if (!svgElement) {
+      setPreviewCanvasBox(null);
+      return;
+    }
+
+    const svgRect = svgElement.getBoundingClientRect();
+
+    if (!svgRect.width || !svgRect.height) {
+      setPreviewCanvasBox(null);
+      return;
+    }
+
+    setPreviewCanvasBox({
+      x: svgRect.left - stageRect.left,
+      y: svgRect.top - stageRect.top,
+      width: svgRect.width,
+      height: svgRect.height,
+    });
+  });
+
+  useEffect(() => {
+    const stageElement = stageRef.current;
+
+    if (!stageElement) {
+      return;
+    }
+
+    const frameId = window.requestAnimationFrame(() => {
+      syncCanvasMetrics();
+    });
+
+    const handleResize = () => {
+      syncCanvasMetrics();
+    };
+
+    window.addEventListener("resize", handleResize);
+
+    let observer: ResizeObserver | null = null;
+
+    if (typeof ResizeObserver !== "undefined") {
+      observer = new ResizeObserver(() => {
+        syncCanvasMetrics();
+      });
+      observer.observe(stageElement);
+      const svgElement = stageElement.querySelector("svg");
+      if (svgElement) {
+        observer.observe(svgElement);
+      }
+    }
+
+    return () => {
+      window.cancelAnimationFrame(frameId);
+      window.removeEventListener("resize", handleResize);
+      observer?.disconnect();
+    };
+  }, [leftDrawerOpen, previewMarkup, rightDrawerOpen, viewportMode]);
+
+  function getPointerOnStage(clientX: number, clientY: number): CanvasPoint | null {
+    const stageElement = stageRef.current;
+
+    if (!stageElement) {
+      return null;
+    }
+
+    const stageRect = stageElement.getBoundingClientRect();
+
+    return {
+      x: clientX - stageRect.left,
+      y: clientY - stageRect.top,
+    };
+  }
+
+  function endCanvasInteraction(pointerId?: number) {
+    if (typeof pointerId === "number" && canvasOverlayRef.current?.hasPointerCapture(pointerId)) {
+      canvasOverlayRef.current.releasePointerCapture(pointerId);
+    }
+
+    setCanvasInteraction(DEFAULT_CANVAS_DRAG_STATE);
+  }
+
+  function beginCanvasInteraction(
+    event: ReactPointerEvent<SVGElement>,
+    handle: StudioCanvasHandle,
+    dragMode: Exclude<CanvasDragMode, null>,
+  ) {
+    if (!canvasHandleGeometry || !previewCanvasBox) {
+      return;
+    }
+
+    const pointer = getPointerOnStage(event.clientX, event.clientY);
+
+    if (!pointer) {
+      return;
+    }
+
+    event.preventDefault();
+    event.stopPropagation();
+    canvasOverlayRef.current?.setPointerCapture(event.pointerId);
+
+    setCanvasInteraction({
+      activeHandle: handle,
+      hoverHandle: handle,
+      dragOrigin: pointer,
+      stageBounds: previewCanvasBox,
+      dragMode,
+      pointerId: event.pointerId,
+      startFitScale: activeDocument.controls.fitScale,
+      startDistance: Math.max(1, Math.hypot(pointer.x - canvasHandleGeometry.center.x, pointer.y - canvasHandleGeometry.center.y)),
+    });
+
+    setActiveControlSection(handle === "trail" ? "trail" : "transform");
+  }
+
+  function handleCanvasPointerMove(event: ReactPointerEvent<SVGSVGElement>) {
+    if (!canvasHandleGeometry || !previewCanvasBox || !canvasInteraction.dragMode) {
+      return;
+    }
+
+    const pointer = getPointerOnStage(event.clientX, event.clientY);
+
+    if (!pointer) {
+      return;
+    }
+
+    if (canvasInteraction.dragMode === "rotate") {
+      updateControl({
+        rotationDeg: rotationFromCanvasPoint(pointer, canvasHandleGeometry.center),
+      });
+      return;
+    }
+
+    if (canvasInteraction.dragMode === "skew") {
+      updateControl({
+        skewXDeg: skewFromCanvasPoint(
+          pointer,
+          canvasHandleGeometry.skewGuideStart.x,
+          canvasHandleGeometry.skewGuideEnd.x,
+        ),
+      });
+      return;
+    }
+
+    if (canvasInteraction.dragMode === "scale") {
+      updateControl({
+        fitScale: fitScaleFromCanvasPoint(
+          pointer,
+          canvasHandleGeometry.center,
+          canvasInteraction.startFitScale,
+          canvasInteraction.startDistance,
+        ),
+      });
+      return;
+    }
+
+    const offsets = trailOffsetFromCanvasPoint(
+      pointer,
+      canvasHandleGeometry.centerScene,
+      canvasHandleGeometry.sceneBounds,
+      previewCanvasBox,
+    );
+
+    updateControl(offsets);
+  }
+
+  function handleCanvasPointerUp(event: ReactPointerEvent<SVGSVGElement>) {
+    endCanvasInteraction(event.pointerId);
+  }
 
   async function applyImportedMarkup(rawMarkup: string, suggestedName?: string) {
     try {
@@ -678,37 +992,18 @@ export function StudioApp() {
     <main className="studio-shell" data-viewport={viewportMode}>
       <header className="studio-app-bar">
         <div className="studio-app-bar-left">
-          <StudioBrand theme={theme} />
-          <div className="studio-app-bar-meta">
-            <p className="eyebrow">Workspace</p>
-            <h1 className="studio-app-bar-title">{activeDocument.name}</h1>
-          </div>
+          <StudioMark theme={theme} />
+          <h1 className="studio-app-bar-title">{activeDocument.name}</h1>
         </div>
 
-        <div className="studio-app-bar-actions">
-          <button
-            aria-pressed={leftDrawerOpen}
-            className="ui-button ui-button-ghost"
-            type="button"
-            onClick={handleToggleLeftDrawer}
-          >
-            {leftDrawerOpen ? "Hide library" : "Library"}
-          </button>
-          <button
-            aria-pressed={rightDrawerOpen}
-            className="ui-button ui-button-ghost"
-            type="button"
-            onClick={handleToggleRightDrawer}
-          >
-            {rightDrawerOpen ? "Hide controls" : "Controls"}
-          </button>
-          <button className="ui-button ui-button-key" type="button" onClick={() => createDraft()}>
-            New draft
-          </button>
-          <button className="ui-button ui-button-ghost" type="button" onClick={toggleTheme}>
-            {theme === "dark" ? "Light mode" : "Dark mode"}
-          </button>
-        </div>
+        <button
+          aria-label={theme === "dark" ? "Light mode" : "Dark mode"}
+          className="studio-icon-button studio-theme-toggle"
+          type="button"
+          onClick={toggleTheme}
+        >
+          <ThemeToggleIcon theme={theme} />
+        </button>
       </header>
 
       <div className="studio-app-frame" style={workspaceInsets}>
@@ -721,12 +1016,35 @@ export function StudioApp() {
           />
         ) : null}
 
+        {!leftDrawerOpen ? (
+          <button
+            aria-label="Expand library drawer"
+            className="studio-drawer-tab studio-drawer-tab-left"
+            type="button"
+            onClick={handleToggleLeftDrawer}
+          >
+            <DrawerToggleIcon side="left" open={false} />
+          </button>
+        ) : null}
+
+        {!rightDrawerOpen ? (
+          <button
+            aria-label="Expand controls drawer"
+            className="studio-drawer-tab studio-drawer-tab-right"
+            type="button"
+            onClick={handleToggleRightDrawer}
+          >
+            <DrawerToggleIcon side="right" open={false} />
+          </button>
+        ) : null}
+
         <aside
           aria-label="Library drawer"
           className={`studio-app-drawer studio-app-drawer-left ${leftDrawerOpen ? "is-open" : ""} ${
             isLeftOverlay ? "is-overlay" : ""
           }`}
         >
+          <DrawerHeader title="Library" side="left" open={leftDrawerOpen} onToggle={handleToggleLeftDrawer} />
           <div className="studio-drawer-scroll">
             <DrawerSection
               title="Drafts"
@@ -930,11 +1248,146 @@ export function StudioApp() {
             </div>
 
             <div
+              ref={stageRef}
               className="studio-stage studio-grid-surface"
               style={{ backgroundColor: activeDocument.controls.previewBgColor }}
             >
               {isPending ? <div className="studio-status-pill">Updating</div> : null}
               <div className="studio-stage-markup" dangerouslySetInnerHTML={{ __html: previewMarkup }} />
+              {canvasHandleGeometry ? (
+                <svg
+                  ref={canvasOverlayRef}
+                  aria-hidden="true"
+                  className={`studio-canvas-overlay ${
+                    canvasInteraction.activeHandle ? "is-dragging" : ""
+                  }`}
+                  viewBox={`0 0 ${stageViewport.width} ${stageViewport.height}`}
+                  onPointerMove={handleCanvasPointerMove}
+                  onPointerUp={handleCanvasPointerUp}
+                  onPointerCancel={handleCanvasPointerUp}
+                  onPointerLeave={() =>
+                    setCanvasInteraction((current) =>
+                      current.activeHandle ? current : { ...current, hoverHandle: null },
+                    )
+                  }
+                >
+                  <defs>
+                    <marker
+                      id="studio-trail-arrow"
+                      markerWidth="8"
+                      markerHeight="8"
+                      refX="4"
+                      refY="4"
+                      orient="auto-start-reverse"
+                    >
+                      <path d="M1 1L7 4L1 7V1Z" fill="currentColor" />
+                    </marker>
+                  </defs>
+
+                  <g className={`studio-pose-gizmo ${canvasInteraction.activeHandle === "pose" ? "is-active" : ""}`}>
+                    <circle
+                      cx={canvasHandleGeometry.center.x}
+                      cy={canvasHandleGeometry.center.y}
+                      r="6"
+                      className="studio-gizmo-center"
+                    />
+                    <circle
+                      cx={canvasHandleGeometry.center.x}
+                      cy={canvasHandleGeometry.center.y}
+                      r={Math.max(
+                        24,
+                        Math.hypot(
+                          canvasHandleGeometry.rotateHandle.x - canvasHandleGeometry.center.x,
+                          canvasHandleGeometry.rotateHandle.y - canvasHandleGeometry.center.y,
+                        ),
+                      )}
+                      className="studio-gizmo-ring"
+                    />
+                    <line
+                      x1={canvasHandleGeometry.center.x}
+                      y1={canvasHandleGeometry.center.y}
+                      x2={canvasHandleGeometry.rotateHandle.x}
+                      y2={canvasHandleGeometry.rotateHandle.y}
+                      className="studio-gizmo-guide"
+                    />
+                    <line
+                      x1={canvasHandleGeometry.center.x}
+                      y1={canvasHandleGeometry.center.y}
+                      x2={canvasHandleGeometry.scaleHandle.x}
+                      y2={canvasHandleGeometry.scaleHandle.y}
+                      className="studio-gizmo-guide studio-gizmo-guide-scale"
+                    />
+                    <line
+                      x1={canvasHandleGeometry.skewGuideStart.x}
+                      y1={canvasHandleGeometry.skewGuideStart.y}
+                      x2={canvasHandleGeometry.skewGuideEnd.x}
+                      y2={canvasHandleGeometry.skewGuideEnd.y}
+                      className="studio-gizmo-guide"
+                    />
+                    <circle
+                      data-testid="canvas-handle-rotate"
+                      cx={canvasHandleGeometry.rotateHandle.x}
+                      cy={canvasHandleGeometry.rotateHandle.y}
+                      r="10"
+                      className="studio-canvas-handle"
+                      onPointerDown={(event) => beginCanvasInteraction(event, "pose", "rotate")}
+                      onPointerEnter={() =>
+                        setCanvasInteraction((current) => ({ ...current, hoverHandle: "pose" }))
+                      }
+                    />
+                    <circle
+                      data-testid="canvas-handle-skew"
+                      cx={canvasHandleGeometry.skewHandle.x}
+                      cy={canvasHandleGeometry.skewHandle.y}
+                      r="9"
+                      className="studio-canvas-handle studio-canvas-handle-alt"
+                      onPointerDown={(event) => beginCanvasInteraction(event, "pose", "skew")}
+                      onPointerEnter={() =>
+                        setCanvasInteraction((current) => ({ ...current, hoverHandle: "pose" }))
+                      }
+                    />
+                    <circle
+                      data-testid="canvas-handle-scale"
+                      cx={canvasHandleGeometry.scaleHandle.x}
+                      cy={canvasHandleGeometry.scaleHandle.y}
+                      r="9"
+                      className="studio-canvas-handle studio-canvas-handle-scale"
+                      onPointerDown={(event) => beginCanvasInteraction(event, "pose", "scale")}
+                      onPointerEnter={() =>
+                        setCanvasInteraction((current) => ({ ...current, hoverHandle: "pose" }))
+                      }
+                    />
+                  </g>
+
+                  <g className={`studio-trail-gizmo ${canvasInteraction.activeHandle === "trail" ? "is-active" : ""}`}>
+                    <line
+                      x1={canvasHandleGeometry.center.x}
+                      y1={canvasHandleGeometry.center.y}
+                      x2={canvasHandleGeometry.trailHandle.x}
+                      y2={canvasHandleGeometry.trailHandle.y}
+                      className="studio-trail-line"
+                      markerEnd="url(#studio-trail-arrow)"
+                    />
+                    <circle
+                      cx={canvasHandleGeometry.center.x}
+                      cy={canvasHandleGeometry.center.y}
+                      r="5"
+                      className="studio-gizmo-center studio-gizmo-center-trail"
+                    />
+                    <circle
+                      data-testid="canvas-handle-trail"
+                      cx={canvasHandleGeometry.trailHandle.x}
+                      cy={canvasHandleGeometry.trailHandle.y}
+                      r="10"
+                      className="studio-canvas-handle studio-canvas-handle-trail"
+                      onPointerDown={(event) => beginCanvasInteraction(event, "trail", "trail")}
+                      onPointerEnter={() =>
+                        setCanvasInteraction((current) => ({ ...current, hoverHandle: "trail" }))
+                      }
+                    />
+                  </g>
+                </svg>
+              ) : null}
             </div>
           </section>
         </section>
@@ -945,6 +1398,7 @@ export function StudioApp() {
             isRightOverlay ? "is-overlay" : ""
           }`}
         >
+          <DrawerHeader title="Controls" side="right" open={rightDrawerOpen} onToggle={handleToggleRightDrawer} />
           <div className="studio-right-rail">
             <div className="studio-right-scroll">
               <RailWidget
@@ -991,8 +1445,8 @@ export function StudioApp() {
                   <div className="studio-control-group">
                     <RangeField
                       label="Rotation"
-                      min={-70}
-                      max={70}
+                      min={CONTROL_LIMITS.rotationDeg.min}
+                      max={CONTROL_LIMITS.rotationDeg.max}
                       step={1}
                       value={activeDocument.controls.rotationDeg}
                       tooltip="Rotate the whole SVG group before skewing it into the isometric pose."
@@ -1000,8 +1454,8 @@ export function StudioApp() {
                     />
                     <RangeField
                       label="Skew X"
-                      min={-70}
-                      max={70}
+                      min={CONTROL_LIMITS.skewXDeg.min}
+                      max={CONTROL_LIMITS.skewXDeg.max}
                       step={1}
                       value={activeDocument.controls.skewXDeg}
                       tooltip="Push the projected face left or right to tune the isometric angle."
@@ -1018,8 +1472,8 @@ export function StudioApp() {
                     />
                     <RangeField
                       label="Fit scale"
-                      min={0.5}
-                      max={2.3}
+                      min={CONTROL_LIMITS.fitScale.min}
+                      max={CONTROL_LIMITS.fitScale.max}
                       step={0.01}
                       value={activeDocument.controls.fitScale}
                       tooltip="Scale the full composition so it sits well inside the canvas."
@@ -1111,8 +1565,8 @@ export function StudioApp() {
                   <div className="studio-control-group">
                     <RangeField
                       label="Offset X"
-                      min={-80}
-                      max={80}
+                      min={CONTROL_LIMITS.trailOffset.min}
+                      max={CONTROL_LIMITS.trailOffset.max}
                       step={1}
                       value={activeDocument.controls.trailOffsetX}
                       tooltip="Shift each layer left or right between trail steps."
@@ -1120,8 +1574,8 @@ export function StudioApp() {
                     />
                     <RangeField
                       label="Offset Y"
-                      min={-80}
-                      max={80}
+                      min={CONTROL_LIMITS.trailOffset.min}
+                      max={CONTROL_LIMITS.trailOffset.max}
                       step={1}
                       value={activeDocument.controls.trailOffsetY}
                       tooltip="Shift each layer up or down between trail steps."

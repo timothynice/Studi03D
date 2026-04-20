@@ -550,22 +550,19 @@ img {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 16px;
-  height: 60px;
-  padding: 0 18px;
+  gap: 10px;
+  height: 36px;
+  padding: 0 10px;
   border-bottom: 1px solid var(--line-1);
   background:
-    linear-gradient(180deg, color-mix(in srgb, var(--glass-thick) 94%, transparent), transparent),
-    color-mix(in srgb, var(--glass-thick) 86%, transparent);
-  backdrop-filter: blur(18px) saturate(1.12);
-  -webkit-backdrop-filter: blur(18px) saturate(1.12);
+    linear-gradient(180deg, color-mix(in srgb, var(--glass-thick) 92%, transparent), transparent),
+    color-mix(in srgb, var(--glass-thick) 82%, transparent);
+  backdrop-filter: blur(16px) saturate(1.06);
+  -webkit-backdrop-filter: blur(16px) saturate(1.06);
 }
 
 .studio-app-bar-left,
-.studio-app-bar-actions,
 .studio-app-brand,
-.studio-app-brand-copy,
-.studio-app-bar-meta,
 .studio-inline-actions,
 .studio-chip-row,
 .studio-stage-chip-row,
@@ -582,54 +579,75 @@ img {
   display: flex;
 }
 
-.studio-app-bar-left,
-.studio-app-bar-actions {
-  align-items: center;
-}
-
 .studio-app-bar-left {
+  align-items: center;
   min-width: 0;
-  gap: 14px;
-}
-
-.studio-app-bar-actions {
   gap: 8px;
-  margin-left: auto;
-}
-
-.studio-app-bar .ui-button {
-  min-height: 34px;
-  padding: 7px 12px;
-  white-space: nowrap;
 }
 
 .studio-app-brand {
   align-items: center;
-  gap: 10px;
-  min-width: 0;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
 }
 
-.studio-app-brand-copy,
-.studio-app-bar-meta {
-  min-width: 0;
-  flex-direction: column;
-  gap: 2px;
+.studio-brand-mark {
+  display: block;
+  width: 18px;
+  height: 18px;
 }
 
 .studio-app-bar-title {
   margin: 0;
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 16px;
+  font-size: 13px;
   font-weight: 500;
-  letter-spacing: -0.02em;
+  letter-spacing: -0.01em;
+}
+
+.studio-icon {
+  width: 18px;
+  height: 18px;
+  fill: none;
+  stroke: currentColor;
+}
+
+.studio-icon-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 1px solid var(--line-1);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--surface) 70%, transparent);
+  color: var(--fg-2);
+  box-shadow: var(--sh-0);
+}
+
+.studio-icon-button:hover {
+  color: var(--fg-1);
+  border-color: var(--line-2);
+}
+
+.studio-icon-button:focus-visible {
+  outline: none;
+  box-shadow: var(--sh-key);
+}
+
+.studio-theme-toggle {
+  margin-left: auto;
 }
 
 .studio-app-frame {
   position: relative;
-  height: calc(100dvh - 60px);
-  margin-top: 60px;
+  height: calc(100dvh - 36px);
+  margin-top: 36px;
   overflow: hidden;
 }
 
@@ -646,6 +664,8 @@ img {
   top: 0;
   bottom: 0;
   z-index: 24;
+  display: flex;
+  flex-direction: column;
   overflow: hidden;
   border: 1px solid var(--line-1);
   background:
@@ -677,13 +697,62 @@ img {
   transform: translateX(0);
 }
 
+.studio-drawer-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-height: 36px;
+  padding: 0 10px;
+  border-bottom: 1px solid var(--line-1);
+  background: color-mix(in srgb, var(--surface) 72%, transparent);
+  flex: none;
+}
+
+.studio-drawer-title {
+  margin: 0;
+  color: var(--fg-2);
+  font-family: var(--ff-mono);
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.studio-drawer-tab {
+  position: absolute;
+  top: 10px;
+  z-index: 26;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 1px solid var(--line-1);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--surface) 74%, transparent);
+  color: var(--fg-2);
+  box-shadow: var(--sh-1);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
+.studio-drawer-tab-left {
+  left: 8px;
+}
+
+.studio-drawer-tab-right {
+  right: 8px;
+}
+
 .studio-drawer-scroll,
 .studio-right-scroll {
-  height: 100%;
+  flex: 1;
+  min-height: 0;
   flex-direction: column;
   gap: 0;
   overflow: auto;
-  padding: 8px 0 18px;
+  padding: 0 0 18px;
   scrollbar-width: thin;
   scrollbar-color: var(--fg-4) transparent;
 }
@@ -996,9 +1065,9 @@ img {
 
 .studio-workspace {
   height: 100%;
-  padding: 16px 20px 20px;
-  padding-left: calc(var(--studio-left-inset) + 20px);
-  padding-right: calc(var(--studio-right-inset) + 20px);
+  padding: 10px 12px 12px;
+  padding-left: calc(var(--studio-left-inset) + 12px);
+  padding-right: calc(var(--studio-right-inset) + 12px);
   transition:
     padding var(--dur-md) var(--ease),
     transform var(--dur-md) var(--ease);
@@ -1020,8 +1089,8 @@ img {
 
 .studio-stage-toolbar {
   gap: 12px;
-  min-height: 68px;
-  padding: 14px 16px;
+  min-height: 52px;
+  padding: 10px 12px;
   border-bottom: 1px solid var(--line-1);
 }
 
@@ -1032,15 +1101,15 @@ img {
 
 .studio-stage-actions {
   align-items: center;
-  gap: 10px;
+  gap: 8px;
 }
 
 .studio-preview-swatch {
   position: relative;
-  width: 36px;
-  height: 36px;
+  width: 28px;
+  height: 28px;
   border: 1px solid var(--line-1);
-  border-radius: 12px;
+  border-radius: 9px;
   overflow: hidden;
   box-shadow: var(--sh-0);
   cursor: pointer;
@@ -1067,7 +1136,7 @@ img {
   min-height: 0;
   align-items: center;
   justify-content: center;
-  margin: 16px;
+  margin: 12px;
   overflow: hidden;
   border: 1px solid var(--line-1);
   border-radius: 18px;
@@ -1091,6 +1160,8 @@ img {
   max-width: calc(100% - 32px);
   max-height: calc(100% - 32px);
   padding: 24px;
+  position: relative;
+  z-index: 1;
 }
 
 .studio-stage-markup svg {
@@ -1116,7 +1187,80 @@ img {
 }
 
 .studio-right-rail {
-  height: 100%;
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+
+.studio-canvas-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  pointer-events: none;
+}
+
+.studio-canvas-overlay.is-dragging {
+  cursor: grabbing;
+}
+
+.studio-gizmo-ring,
+.studio-gizmo-guide,
+.studio-trail-line {
+  fill: none;
+  stroke: color-mix(in srgb, var(--fg-2) 74%, transparent);
+  stroke-width: 1.5;
+}
+
+.studio-gizmo-ring {
+  stroke-dasharray: 6 6;
+}
+
+.studio-gizmo-guide-scale {
+  stroke-dasharray: 3 5;
+}
+
+.studio-gizmo-center {
+  fill: color-mix(in srgb, var(--surface) 78%, transparent);
+  stroke: color-mix(in srgb, var(--fg-1) 62%, transparent);
+  stroke-width: 1.5;
+}
+
+.studio-gizmo-center-trail {
+  opacity: 0.7;
+}
+
+.studio-trail-line {
+  color: color-mix(in srgb, var(--key) 80%, var(--fg-1) 20%);
+  stroke: currentColor;
+  stroke-width: 1.75;
+}
+
+.studio-canvas-handle {
+  fill: color-mix(in srgb, var(--surface) 86%, transparent);
+  stroke: color-mix(in srgb, var(--fg-1) 76%, transparent);
+  stroke-width: 2;
+  pointer-events: all;
+  cursor: grab;
+  filter: drop-shadow(0 2px 6px rgba(0, 0, 0, 0.24));
+}
+
+.studio-canvas-handle:hover,
+.studio-pose-gizmo.is-active .studio-canvas-handle,
+.studio-trail-gizmo.is-active .studio-canvas-handle-trail {
+  fill: color-mix(in srgb, var(--key) 26%, var(--surface) 74%);
+  stroke: color-mix(in srgb, var(--key) 80%, var(--fg-1) 20%);
+}
+
+.studio-canvas-handle-alt {
+  fill: color-mix(in srgb, var(--surface) 82%, transparent);
+}
+
+.studio-canvas-handle-scale {
+  fill: color-mix(in srgb, var(--surface) 84%, transparent);
+}
+
+.studio-canvas-handle-trail {
+  fill: color-mix(in srgb, var(--surface) 80%, transparent);
 }
 
 .studio-rail-icon-button {
@@ -1541,9 +1685,8 @@ img {
     padding-inline: 12px;
   }
 
-  .studio-app-bar-title,
-  .studio-app-brand .brand-meta {
-    display: none;
+  .studio-app-bar-title {
+    max-width: min(48vw, 260px);
   }
 
   .studio-workspace {
@@ -1567,13 +1710,8 @@ img {
     gap: 10px;
   }
 
-  .studio-app-bar-actions {
-    gap: 6px;
-  }
-
-  .studio-app-bar .ui-button {
-    padding-inline: 9px;
-    font-size: 12px;
+  .studio-app-bar-title {
+    max-width: calc(100vw - 84px);
   }
 
   .studio-app-drawer {
@@ -1612,5 +1750,24 @@ img {
   .studio-stage-markup {
     max-width: calc(100% - 16px);
     padding: 16px;
+  }
+}
+
+@media (max-width: 639px) {
+  .studio-app-bar-title {
+    max-width: calc(100vw - 76px);
+    font-size: 12px;
+  }
+
+  .studio-drawer-header {
+    padding-inline: 8px;
+  }
+
+  .studio-drawer-tab-left {
+    left: 6px;
+  }
+
+  .studio-drawer-tab-right {
+    right: 6px;
   }
 }
