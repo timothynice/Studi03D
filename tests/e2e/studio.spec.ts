@@ -37,7 +37,23 @@ test("imports, edits, persists, and exports a draft", async ({ page }) => {
 
   await expect(page.getByRole("complementary", { name: "Library drawer" })).toBeVisible();
 
-  await page.getByLabel("Import SVG file").setInputFiles({
+  const [dropzoneChooser] = await Promise.all([
+    page.waitForEvent("filechooser"),
+    page.locator(".studio-dropzone").click(),
+  ]);
+  await dropzoneChooser.setFiles({
+    name: "card.svg",
+    mimeType: "image/svg+xml",
+    buffer: Buffer.from(SAMPLE_SVG),
+  });
+
+  await expect(page.getByText(/Loaded SVG with 1 detected source color/)).toBeVisible();
+
+  const [buttonChooser] = await Promise.all([
+    page.waitForEvent("filechooser"),
+    page.locator(".studio-dropzone-button").click(),
+  ]);
+  await buttonChooser.setFiles({
     name: "card.svg",
     mimeType: "image/svg+xml",
     buffer: Buffer.from(SAMPLE_SVG),
@@ -58,7 +74,13 @@ test("imports, edits, persists, and exports a draft", async ({ page }) => {
     .locator(".studio-range-header .studio-tooltip-anchor")
     .filter({ hasText: "Rotation" })
     .first();
+  expect(await rotationTooltipAnchor.evaluate((element) => window.getComputedStyle(element).cursor)).not.toBe(
+    "help",
+  );
   await rotationTooltipAnchor.hover();
+  await page.waitForTimeout(1000);
+  await expect(page.getByRole("tooltip")).toHaveCount(0);
+  await page.waitForTimeout(700);
   await expect(page.getByRole("tooltip")).toBeVisible();
   await expect(page.getByRole("tooltip")).toHaveCount(1);
 
@@ -72,7 +94,13 @@ test("imports, edits, persists, and exports a draft", async ({ page }) => {
   expect(tooltipBox.x + tooltipBox.width).toBeLessThanOrEqual(viewport.width);
   expect(tooltipBox.y + tooltipBox.height).toBeLessThanOrEqual(viewport.height);
 
+  await page.mouse.move(0, 0);
+  await expect(page.getByRole("tooltip")).toHaveCount(0);
+
   await rotationTooltipAnchor.focus();
+  await page.waitForTimeout(1000);
+  await expect(page.getByRole("tooltip")).toHaveCount(0);
+  await page.waitForTimeout(700);
   await expect(page.getByRole("tooltip")).toBeVisible();
 
   const rotationInput = page.getByRole("spinbutton", { name: "Rotation" });
@@ -132,5 +160,6 @@ test("imports, edits, persists, and exports a draft", async ({ page }) => {
 
   await page.reload();
   await expect(page.locator("#draft-name")).toHaveValue("Orbit Card");
-  await expect(page.locator(".studio-stage-chip-row .studio-status-chip").first()).toHaveText("SVG ready");
+  await expect(page.locator("#preview-color")).toHaveValue("#111827");
+  await expect(page.locator(".studio-stage-markup svg")).toBeVisible();
 });

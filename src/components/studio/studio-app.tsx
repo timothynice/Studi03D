@@ -49,6 +49,7 @@ import type { StudioUiSection, ThemeMode } from "@/lib/ui/types";
 
 const MOBILE_MAX = 899;
 const TABLET_MAX = 1279;
+const TOOLTIP_DELAY_MS = 1500;
 
 type ViewportMode = "desktop" | "tablet" | "mobile";
 type CanvasDragMode = "rotate" | "skew" | "scale" | "trail" | null;
@@ -222,6 +223,16 @@ function TooltipProvider({
   const [activeTooltip, setActiveTooltip] = useState<TooltipState | null>(null);
   const [position, setPosition] = useState<TooltipPosition>(DEFAULT_TOOLTIP_POSITION);
   const tooltipRef = useRef<HTMLDivElement | null>(null);
+  const pendingTooltipRef = useRef<{ id: string; timeoutId: number } | null>(null);
+
+  function clearPendingTooltip() {
+    if (!pendingTooltipRef.current) {
+      return;
+    }
+
+    window.clearTimeout(pendingTooltipRef.current.timeoutId);
+    pendingTooltipRef.current = null;
+  }
 
   const updateTooltipPosition = useEffectEvent(() => {
     if (!activeTooltip || !tooltipRef.current) {
@@ -306,14 +317,37 @@ function TooltipProvider({
     };
   }, [activeTooltip]);
 
+  useEffect(
+    () => () => {
+      clearPendingTooltip();
+    },
+    [],
+  );
+
   return (
     <TooltipContext.Provider
       value={{
         showTooltip: (tooltip) => {
-          setActiveTooltip(tooltip);
+          if (activeTooltip?.id === tooltip.id || pendingTooltipRef.current?.id === tooltip.id) {
+            return;
+          }
+
+          clearPendingTooltip();
+          setActiveTooltip((current) => (current?.id === tooltip.id ? current : null));
           setPosition(DEFAULT_TOOLTIP_POSITION);
+          pendingTooltipRef.current = {
+            id: tooltip.id,
+            timeoutId: window.setTimeout(() => {
+              setActiveTooltip(tooltip);
+              setPosition(DEFAULT_TOOLTIP_POSITION);
+              pendingTooltipRef.current = null;
+            }, TOOLTIP_DELAY_MS),
+          };
         },
         hideTooltip: (id) => {
+          if (pendingTooltipRef.current?.id === id) {
+            clearPendingTooltip();
+          }
           setActiveTooltip((current) => (current?.id === id ? null : current));
         },
       }}
@@ -1450,19 +1484,21 @@ export function StudioApp() {
                   void handleFileImport(event.dataTransfer.files.item(0));
                 }}
               >
-                <div className="studio-dropzone">
-                  <label className="ui-button ui-button-secondary" htmlFor="svg-upload">
-                    Choose SVG file
-                  </label>
-                  <input
-                    id="svg-upload"
-                    aria-label="Import SVG file"
-                    className="sr-only"
-                    type="file"
-                    accept=".svg,image/svg+xml"
-                    onChange={(event) => void handleFileImport(event.target.files?.[0] ?? null)}
-                  />
-                </div>
+                <label className="studio-dropzone" htmlFor="svg-upload">
+                  <span className="studio-dropzone-copy">
+                    <span className="studio-dropzone-title">Drop SVG here</span>
+                    <span className="studio-dropzone-note">or click anywhere to browse</span>
+                  </span>
+                  <span className="ui-button ui-button-secondary studio-dropzone-button">Choose SVG file</span>
+                </label>
+                <input
+                  id="svg-upload"
+                  aria-label="Import SVG file"
+                  className="sr-only"
+                  type="file"
+                  accept=".svg,image/svg+xml"
+                  onChange={(event) => void handleFileImport(event.target.files?.[0] ?? null)}
+                />
               </div>
 
               <div className="studio-field">
@@ -1529,42 +1565,6 @@ export function StudioApp() {
 
         <section className="studio-workspace">
           <section className="studio-stage-shell">
-            <div className="studio-stage-toolbar">
-              <div className="studio-stage-toolbar-group">
-                <p className="eyebrow">Canvas</p>
-                <div className="studio-stage-chip-row">
-                  <span className={`studio-status-chip ${hasAsset ? "is-active" : ""}`}>
-                    {hasAsset ? "SVG ready" : "Placeholder"}
-                  </span>
-                  {hasAsset ? <span className="studio-status-chip">{activeDocument.asset?.viewBox}</span> : null}
-                  <span className="studio-status-chip">
-                    {visibleTrailCount} trail{visibleTrailCount === 1 ? "" : "s"}
-                  </span>
-                </div>
-              </div>
-
-              <div className="studio-stage-actions">
-                <label className="studio-preview-swatch" htmlFor="preview-color">
-                  <span className="studio-preview-swatch-label">BG</span>
-                  <input
-                    id="preview-color"
-                    aria-label="Preview background color"
-                    className="studio-swatch-input"
-                    type="color"
-                    value={activeDocument.controls.previewBgColor}
-                    onChange={(event) => updateControl({ previewBgColor: event.target.value })}
-                  />
-                </label>
-                <button
-                  className="ui-button ui-button-ghost"
-                  type="button"
-                  onClick={() => updateControl(createDefaultControls())}
-                >
-                  Reset
-                </button>
-              </div>
-            </div>
-
             <div
               ref={stageRef}
               className="studio-stage studio-grid-surface"
@@ -1818,12 +1818,17 @@ export function StudioApp() {
                       onChange={(event) => updateControl({ artColor: event.target.value })}
                     />
                   </label>
-                  <div
-                    className="studio-swatch-static"
-                    style={{ backgroundColor: activeDocument.controls.previewBgColor }}
-                  >
+                  <label className="studio-swatch-field" htmlFor="preview-color">
                     <span className="studio-swatch-label">BG</span>
-                  </div>
+                    <input
+                      id="preview-color"
+                      aria-label="Preview background color"
+                      className="studio-swatch-input"
+                      type="color"
+                      value={activeDocument.controls.previewBgColor}
+                      onChange={(event) => updateControl({ previewBgColor: event.target.value })}
+                    />
+                  </label>
                   <div className="studio-swatch-static" style={{ backgroundColor: "var(--fg-1)" }} />
                   <div className="studio-swatch-static studio-swatch-static-transparent" />
                 </div>
