@@ -1,22 +1,54 @@
 import type { Metadata } from "next";
-import { IBM_Plex_Mono, Space_Grotesk } from "next/font/google";
+import localFont from "next/font/local";
+import { JetBrains_Mono, Michroma, Space_Grotesk } from "next/font/google";
+
+import { ThemeProvider } from "@/components/providers/theme-provider";
 import "./globals.css";
 
 const spaceGrotesk = Space_Grotesk({
-  variable: "--font-geist-sans",
   subsets: ["latin"],
+  variable: "--font-space-grotesk",
 });
 
-const ibmPlexMono = IBM_Plex_Mono({
-  variable: "--font-geist-mono",
-  weight: ["400", "500"],
+const jetBrainsMono = JetBrains_Mono({
   subsets: ["latin"],
+  variable: "--font-jetbrains-mono",
 });
+
+const michroma = Michroma({
+  subsets: ["latin"],
+  variable: "--font-michroma",
+  weight: "400",
+});
+
+const nos = localFont({
+  display: "swap",
+  src: "../assets/fonts/NOS.otf",
+  variable: "--font-nos",
+});
+
+const themeInitializer = `
+  (() => {
+    try {
+      const raw = localStorage.getItem("studi03d-ui-store");
+      const parsed = raw ? JSON.parse(raw) : null;
+      const theme = parsed?.state?.theme === "light" ? "light" : "dark";
+      document.documentElement.dataset.theme = theme;
+      document.documentElement.style.colorScheme = theme;
+    } catch {
+      document.documentElement.dataset.theme = "dark";
+      document.documentElement.style.colorScheme = "dark";
+    }
+  })();
+`;
 
 export const metadata: Metadata = {
-  title: "Studi03D SVG Isometric Trail Studio",
+  title: {
+    default: "Studi03D",
+    template: "%s | Studi03D",
+  },
   description:
-    "Import SVG icons, project them into a faux-isometric angle, add duplicate trails, and export transparent SVG or PNG assets.",
+    "A quieter workspace for importing SVG icons, projecting them into faux-isometric stacks, and exporting transparent SVG or PNG trails.",
 };
 
 export default function RootLayout({
@@ -26,10 +58,17 @@ export default function RootLayout({
 }>) {
   return (
     <html
+      suppressHydrationWarning
       lang="en"
-      className={`${spaceGrotesk.variable} ${ibmPlexMono.variable} h-full antialiased`}
+      data-theme="dark"
+      className={`${spaceGrotesk.variable} ${jetBrainsMono.variable} ${michroma.variable} ${nos.variable}`}
     >
-      <body className="min-h-full flex flex-col">{children}</body>
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: themeInitializer }} />
+      </head>
+      <body>
+        <ThemeProvider>{children}</ThemeProvider>
+      </body>
     </html>
   );
 }
