@@ -5,23 +5,26 @@ describe("studio ui store", () => {
     localStorage.clear();
     useStudioUiStore.setState({
       theme: "dark",
-      leftRailCollapsed: false,
-      rightPanelOpen: true,
+      leftDrawerOpen: true,
+      rightDrawerOpen: true,
       activeControlSection: "transform",
+      activeMobileDrawer: null,
     });
   });
 
   it("toggles theme and shell state", () => {
     useStudioUiStore.getState().toggleTheme();
-    useStudioUiStore.getState().toggleLeftRail();
-    useStudioUiStore.getState().toggleRightPanel();
+    useStudioUiStore
+      .getState()
+      .setDrawerState({ leftDrawerOpen: false, rightDrawerOpen: false, activeMobileDrawer: "right" });
     useStudioUiStore.getState().setActiveControlSection("trail");
 
     const state = useStudioUiStore.getState();
 
     expect(state.theme).toBe("light");
-    expect(state.leftRailCollapsed).toBe(true);
-    expect(state.rightPanelOpen).toBe(false);
+    expect(state.leftDrawerOpen).toBe(false);
+    expect(state.rightDrawerOpen).toBe(false);
     expect(state.activeControlSection).toBe("trail");
+    expect(state.activeMobileDrawer).toBe("right");
   });
 });

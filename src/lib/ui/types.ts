@@ -1,10 +1,13 @@
 export type ThemeMode = "dark" | "light";
 
-export type StudioUiSection = "transform" | "trail" | "export";
+export type StudioUiSection = "transform" | "appearance" | "trail" | "export";
+
+export type StudioDrawerSide = "left" | "right";
 
 export interface StudioUiState {
   theme: ThemeMode;
-  leftRailCollapsed: boolean;
-  rightPanelOpen: boolean;
+  leftDrawerOpen: boolean;
+  rightDrawerOpen: boolean;
   activeControlSection: StudioUiSection;
+  activeMobileDrawer: StudioDrawerSide | null;
 }

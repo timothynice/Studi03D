@@ -21,14 +21,18 @@ test("landing, redirect, and theme persistence work across routes", async ({ pag
   await expect(page).toHaveURL(/\/$/);
 
   await page.goto("/studio");
-  await expect(page.getByRole("heading", { name: "Import and save stay on the left." })).toBeVisible();
+  await expect(page.getByLabel("Library drawer")).toBeVisible();
+  await expect(page.getByLabel("Controls drawer")).toBeVisible();
   await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
+  expect(await page.evaluate(() => document.documentElement.scrollHeight <= window.innerHeight + 1)).toBe(
+    true,
+  );
 });
 
 test("imports, edits, persists, and exports a draft", async ({ page }) => {
   await page.goto("/studio");
 
-  await expect(page.getByRole("heading", { name: "Import and save stay on the left." })).toBeVisible();
+  await expect(page.getByLabel("Library drawer")).toBeVisible();
 
   await page.getByLabel("Import SVG file").setInputFiles({
     name: "card.svg",
@@ -41,10 +45,11 @@ test("imports, edits, persists, and exports a draft", async ({ page }) => {
   await page.getByRole("spinbutton", { name: "Stroke weight" }).fill("1.2");
   await page.locator("#art-color").fill("#93b6ff");
   await page.locator("#preview-color").fill("#111827");
-  await page.getByLabel("Draft name").fill("Orbit Card");
+  await page.locator("#draft-name").fill("Orbit Card");
   await expect(page.getByText("viewBox 0 0 48 48")).toBeVisible();
 
   await page.getByLabel("Use custom trail row").check();
+  await page.getByRole("button", { name: "Advanced trail" }).click();
   await page.getByRole("button", { name: "4" }).click();
   await page.getByLabel("Active trail cell").check();
   await page.getByRole("spinbutton", { name: "Slot opacity" }).fill("0.44");
@@ -67,5 +72,5 @@ test("imports, edits, persists, and exports a draft", async ({ page }) => {
 
   await page.reload();
   await expect(page.locator("#draft-name")).toHaveValue("Orbit Card");
-  await expect(page.getByText("SVG ready")).toBeVisible();
+  await expect(page.locator(".studio-stage-chip-row .studio-status-chip").first()).toHaveText("SVG ready");
 });
